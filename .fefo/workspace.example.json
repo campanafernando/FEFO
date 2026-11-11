@@ -1,0 +1,35 @@
+{
+  "fefo": 1,
+  "name": "Example Workspace",
+  "provider": {
+    "model": "opencode-go/deepseek-v4.1-flash"
+  },
+  "harnesses": ["opencode", "claude", "cursor", "copilot"],
+  "repos": [
+    {
+      "name": "api",
+      "path": "../api",
+      "role": "api",
+      "stack": "django",
+      "mcp": "codegraph-api",
+      "commands": {
+        "test": "python manage.py test",
+        "lint": "ruff check .",
+        "build": "python manage.py check"
+      }
+    },
+    {
+      "name": "web",
+      "path": "../web",
+      "role": "web",
+      "stack": "next",
+      "mcp": "codegraph-web",
+      "commands": {
+        "test": "npm run test",
+        "lint": "npm run lint",
+        "build": "npm run build"
+      }
+    }
+  ],
+  "mcp_servers": {}
+}
