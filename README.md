@@ -199,8 +199,8 @@ Agents never pin a model, so switching providers is a workspace-level decision.
 | Project | Use it when |
 |---|---|
 | **FEFO** (this repository) | You want the reference template, agents, vault, and CLI |
-| **`opencode-fefo` plugin** | You want FEFO commands inside an existing OpenCode workspace |
-| **`opencode-zshell`** | You want zsh helpers that call the plugin and OpenCode |
+| **`opencode-fefo` plugin** | You want FEFO commands inside an existing OpenCode workspace ([repo](https://github.com/campanafernando/opencode-fefo)) |
+| **`opencode-zshell`** | You want zsh helpers that call the plugin and OpenCode ([repo](https://github.com/campanafernando/opencode-zshell)) |
 
 ## CLI
 
