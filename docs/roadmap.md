@@ -17,7 +17,7 @@
 - [x] Register `fefo` tools and slash commands inside OpenCode
 - [x] Delegate to the workspace CLI without duplicating the generator
 - [ ] Bootstrap instructions for workspaces without the FEFO template
-- [ ] Plugin smoke test against OpenCode 2.3.0+ (unit tests only so far)
+- [x] Plugin smoke test against OpenCode 2.3.0 (live: read tools, permission gate, refusals, `/fefo` synthetic output)
 - [ ] Publish the plugin to npm
 
 ## v0.3 — opencode-zshell integration

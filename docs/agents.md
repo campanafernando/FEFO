@@ -82,6 +82,7 @@ the parent receives a report each time the child goes idle.
   end the turn; the report arrives on its own.
 - Launch a dependent layer only after its prerequisite's report has arrived.
 - Reuse the child's `sessionID` to give it follow-up work.
+- `opencode run` stays alive while background subagents work and exits after the parent's final answer (verified on 2.3.0).
 
 ## Read-only agents
 
