@@ -9,3 +9,8 @@ node_modules/
 .fefo/backups/
 .fefo/cache/
 *.codegraph.lock
+.env
+.env.*
+!.env.example
+.opencode/secrets/
+.claude/settings.local.json

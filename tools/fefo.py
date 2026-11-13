@@ -21,14 +21,16 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get("FEFO_ROOT", Path(__file__).resolve().parents[1])).resolve()
 MANIFEST_PATH = ROOT / ".fefo" / "workspace.json"
-DEFAULT_MODEL = "opencode-go/deepseek-v4.1-flash"
+# Suggested, never forced: a workspace pins a model only when the manifest says so.
+RECOMMENDED_MODEL = "opencode-go/deepseek-v4.1-flash"
+MIN_OPENCODE = (2, 3, 0)
 HARNESSES = ("opencode", "claude", "cursor", "copilot")
 ROLES = (
     "orchestrator", "api", "web", "mobile", "data", "infra", "legacy",
     "integration", "docs", "service", "library",
 )
 STACKS = (
-    "django", "fastapi", "flask", "next", "react", "flutter",
+    "django", "fastapi", "flask", "nest", "next", "react", "flutter",
     "docs", "infra", "generic",
 )
 GIT_ASKS = [
@@ -37,6 +39,12 @@ GIT_ASKS = [
     "git merge *", "git -C * merge *",
     "git rebase *", "git -C * rebase *",
     "git reset --hard*", "git -C * reset --hard*",
+]
+# Force-push is denied outright: `opencode run --auto` (used by scripted helpers)
+# approves everything that is only `ask`, so ask alone is not a guardrail.
+GIT_DENIES = [
+    "git push --force*", "git push -f *", "git push * --force*", "git push * -f *",
+    "git -C * push --force*", "git -C * push -f *", "git -C * push * --force*", "git -C * push * -f *",
 ]
 
 
@@ -53,16 +61,78 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text())
 
 
-def write_json(path: Path, data) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+# Every generated write goes through these helpers. In check mode nothing is
+# written; the paths that would change are collected in DRIFT instead.
+CHECK = False
+DRIFT: list[str] = []
+CONFLICTS: list[str] = []
+
+
+def rel(path: Path) -> str:
+    try:
+        return str(Path(path).relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def ensure_dir(path: Path) -> None:
+    if not CHECK:
+        path.mkdir(parents=True, exist_ok=True)
 
 
 def write_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.is_file() and path.read_text() == content:
+    if path.is_file() and not path.is_symlink() and path.read_text() == content:
         return
+    DRIFT.append(rel(path))
+    if CHECK:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
+
+
+def write_json(path: Path, data) -> None:
+    write_text(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
+def link(path: Path, target: str) -> None:
+    if path.is_symlink() and os.readlink(path) == target:
+        return
+    if path.exists() and not path.is_symlink():
+        CONFLICTS.append(rel(path))
+        print(f"CONFLICT {rel(path)} is a real file or directory; replace it with a symlink to {target}")
+        return
+    DRIFT.append(rel(path))
+    if CHECK:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        path.unlink()
+    path.symlink_to(target)
+
+
+def remove(path: Path) -> None:
+    DRIFT.append(rel(path))
+    if not CHECK:
+        path.unlink()
+
+
+APPEND_REPLACE_KEYS = {"command", "args"}
+
+
+def deep_merge(base, override, key: str = ""):
+    """Merge user overrides into generated config.
+
+    Objects merge key by key, lists append without duplicates (except process
+    `command`/`args` lists, which replace), and scalars replace.
+    """
+    if isinstance(base, dict) and isinstance(override, dict):
+        merged = dict(base)
+        for k, v in override.items():
+            merged[k] = deep_merge(base[k], v, k) if k in base else v
+        return merged
+    if isinstance(base, list) and isinstance(override, list) and key not in APPEND_REPLACE_KEYS:
+        return base + [item for item in override if item not in base]
+    return override
 
 
 def default_manifest(name: str) -> dict:
@@ -70,10 +140,13 @@ def default_manifest(name: str) -> dict:
         "fefo": 1,
         "name": name,
         "generated_at": None,
-        "provider": {"model": DEFAULT_MODEL},
+        "provider": {"model": None},
         "harnesses": list(HARNESSES),
         "repos": [],
+        "plugins": [],
         "mcp_servers": {},
+        "opencode": {},
+        "claude_settings": {},
     }
 
 
@@ -88,8 +161,15 @@ def load_manifest(required: bool = True) -> dict:
 
 
 def save_manifest(data: dict) -> None:
-    data["generated_at"] = datetime.now(timezone.utc).isoformat()
+    # generated_at records creation only; rewriting it on every sync would make
+    # a no-op sync change the manifest.
+    if not data.get("generated_at"):
+        data["generated_at"] = datetime.now(timezone.utc).isoformat()
     write_json(MANIFEST_PATH, data)
+
+
+def manifest_model(manifest: dict) -> str | None:
+    return (manifest.get("provider") or {}).get("model") or None
 
 
 def validate_manifest(data: dict) -> None:
@@ -97,9 +177,9 @@ def validate_manifest(data: dict) -> None:
         raise SystemExit("FEFO: unsupported manifest version; expected fefo: 1.")
     if not data.get("name"):
         raise SystemExit("FEFO: manifest is missing a workspace name.")
-    provider = data.get("provider") or {}
-    if not provider.get("model"):
-        raise SystemExit("FEFO: manifest is missing provider.model.")
+    for field, kind in (("opencode", dict), ("claude_settings", dict), ("plugins", list), ("mcp_servers", dict)):
+        if field in data and not isinstance(data[field], kind):
+            raise SystemExit(f"FEFO: manifest field '{field}' must be a {kind.__name__}.")
     names = set()
     for repo in data.get("repos", []):
         for field in ("name", "path", "role", "stack"):
@@ -162,6 +242,8 @@ def detect_stack(path: Path) -> str:
         return "fastapi"
     if "flask" in py_text:
         return "flask"
+    if '"@nestjs/core"' in package:
+        return "nest"
     if '"next"' in package or "next@" in package:
         return "next"
     if '"react"' in package or '"vite"' in package:
@@ -201,7 +283,7 @@ def detect_commands(path: Path, stack: str) -> dict:
         commands.update(test="pytest", lint="ruff check .", run="flask run")
     elif stack == "flutter":
         commands.update(test="flutter test", lint="flutter analyze", build="flutter build")
-    elif stack in ("next", "react"):
+    elif stack in ("nest", "next", "react"):
         pm = package_manager(path)
         scripts = package_scripts(path)
         if "test" in scripts:
@@ -217,7 +299,7 @@ def detect_commands(path: Path, stack: str) -> dict:
 
 def default_role(stack: str) -> str:
     return {
-        "django": "api", "fastapi": "api", "flask": "api",
+        "django": "api", "fastapi": "api", "flask": "api", "nest": "api",
         "next": "web", "react": "web", "flutter": "mobile",
         "docs": "docs", "infra": "infra",
     }.get(stack, "service")
@@ -315,6 +397,25 @@ def command_rows(manifest: dict) -> str:
     return "\n".join(lines)
 
 
+DELEGATION_RULES = """\
+Subagents run in the background (OpenCode 2.3+): the `subagent` tool returns
+immediately and the parent receives a report each time a child goes idle.
+
+1. Map scopes first; one owner per file set; at most four concurrent subagents.
+2. Launch every independent subagent in one message.
+3. Never poll, sleep, or re-check a child. Continue with non-overlapping work or
+   end the turn; the report arrives on its own.
+4. Launch a dependent layer only after its prerequisite's report has arrived
+   (for example the API contract before the client).
+5. Integrate and verify only after every report is in. To give a child more
+   work, reuse its `sessionID`."""
+
+
+def model_line(manifest: dict) -> str:
+    model = manifest_model(manifest)
+    return f"Model: `{model}`." if model else "Model: the session model (none pinned)."
+
+
 def generate_agents_md(manifest: dict) -> str:
     repos = repo_rows(manifest) if manifest["repos"] else "No repositories added yet."
     commands = command_rows(manifest) if manifest["repos"] else ""
@@ -354,6 +455,10 @@ own Git history, dependencies, and test commands.
 The canonical agent definitions live in `.opencode/agents/`. Claude Code wrappers
 are generated in `.claude/agents/`; Cursor and Copilot receive pointers in
 `.cursor/rules/` and `.github/copilot-instructions.md`.
+
+## Delegation
+
+{DELEGATION_RULES}
 
 ## Working rules
 
@@ -399,8 +504,8 @@ are generated in `.claude/agents/`; Cursor and Copilot receive pointers in
 ./bin/fefo mcp add ...         # add another MCP server
 ```
 
-Provider: `{manifest['provider']['model']}`. FEFO does not hardcode a model in any
-agent; change the provider or model in `.fefo/workspace.json` and run `sync`.
+{model_line(manifest)} FEFO does not hardcode a model in any agent; to pin one for
+this workspace set `provider.model` in `.fefo/workspace.json` and run `sync`.
 """
 
 
@@ -430,7 +535,7 @@ def generate_federation_md(manifest: dict) -> str:
         "",
         "## Model",
         "",
-        f"`{manifest['provider']['model']}` (change in `.fefo/workspace.json`).",
+        f"{model_line(manifest)} Pin one with `provider.model` in `.fefo/workspace.json`.",
         "",
     ]
     if manifest["repos"]:
@@ -472,7 +577,7 @@ def update_generated_block(path: Path, block: str, header: str) -> None:
 
 def generate_vault(manifest: dict) -> None:
     vault = ROOT / "docs" / "vault"
-    (vault / "repos").mkdir(parents=True, exist_ok=True)
+    ensure_dir(vault / "repos")
     index = ["# FEFO Knowledge Vault", "",
              "Start with the federation snapshot and add durable knowledge under `repos/`.", "",
              "- [Federation](federation.md)",
@@ -549,18 +654,26 @@ def generate_opencode(manifest: dict) -> None:
         }
     config = {
         "$schema": "https://opencode.ai/config.json",
-        "model": manifest["provider"]["model"],
         "default_agent": "fefo",
         "instructions": ["AGENTS.md", "AGENTS.local.md"],
+        # Last matching rule wins, so the force-push denies come after the asks.
         "permissions": [
-            {"action": "shell", "resource": resource, "effect": "ask"}
-            for resource in GIT_ASKS
+            *({"action": "shell", "resource": resource, "effect": "ask"} for resource in GIT_ASKS),
+            *({"action": "shell", "resource": resource, "effect": "deny"} for resource in GIT_DENIES),
+            # opencode-fefo asks before any tool call that changes the workspace.
+            {"action": "fefo", "resource": "*", "effect": "ask"},
         ],
         "watcher": {"ignore": ["**/.codegraph/**", "**/node_modules/**", "**/.venv/**", "**/venv/**", "**/__pycache__/**"]},
         "experimental": {"subagent_depth": 2, "todo": True},
         "references": references,
         "mcp": {"timeout": {"startup": 90000}, "servers": servers},
     }
+    model = manifest_model(manifest)
+    if model:
+        config["model"] = model
+    if manifest.get("plugins"):
+        config["plugins"] = list(manifest["plugins"])
+    config = deep_merge(config, manifest.get("opencode") or {})
     write_json(ROOT / "opencode.json", config)
 
 
@@ -591,6 +704,159 @@ def claude_servers(manifest: dict) -> dict:
     return servers
 
 
+DEPRECATED_AGENT_FIELDS = ("permission", "tools", "temperature", "top_p", "prompt", "disable", "maxSteps")
+WRAPPER_MARKER = "canonical definition of this agent"
+OPENCODE_ONLY_COMMAND_FIELDS = ("model", "agent", "subagent", "subtask")
+
+
+def frontmatter(path: Path) -> str:
+    match = re.match(r"^---\n(.*?)\n---\n?", read_text(path), re.S)
+    return match.group(1) if match else ""
+
+
+def fm_field(fm: str, name: str) -> str | None:
+    match = re.search(rf"^{name}:[ \t]*(.*)$", fm, re.M)
+    if not match:
+        return None
+    value = match.group(1).strip()
+    if value in (">", ">-", "|", "|-"):
+        block = re.search(rf"^{name}:.*\n((?:[ \t]+.*\n?)+)", fm, re.M)
+        return " ".join(line.strip() for line in block.group(1).splitlines()) if block else ""
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1]
+    return value
+
+
+def permission_rules(fm: str) -> list[dict]:
+    """Parse a V2 `permissions:` list (block or flow items, any key order)."""
+    match = re.search(r"^permissions:[ \t]*\n((?:[ \t]+.*\n?|-.*\n?)+)", fm + "\n", re.M)
+    if not match:
+        return []
+    rules: list[dict] = []
+    current: dict | None = None
+    for line in match.group(1).splitlines():
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        if text.startswith("- "):
+            text = text[2:].strip()
+            current = {}
+            rules.append(current)
+            if text.startswith("{") and text.endswith("}"):
+                text = text[1:-1]
+                for part in text.split(","):
+                    if ":" in part:
+                        key, value = part.split(":", 1)
+                        current[key.strip()] = value.strip().strip("\"'")
+                continue
+        if current is None or ":" not in text:
+            continue
+        key, value = text.split(":", 1)
+        current[key.strip()] = value.strip().strip("\"'")
+    return rules
+
+
+def rule_effect(rules: list[dict], action: str) -> str | None:
+    """Effect of the last rule that covers every resource of `action` (last match wins)."""
+    result = None
+    for rule in rules:
+        if rule.get("action") in (action, "*") and rule.get("resource") == "*":
+            result = rule.get("effect")
+    return result
+
+
+def blocked_tools(fm: str) -> list[str]:
+    rules = permission_rules(fm)
+    blocked = []
+    if rule_effect(rules, "edit") == "deny":
+        blocked += ["Edit", "Write"]
+    shell = [r for r in rules if r.get("action") in ("shell", "*")]
+    if rule_effect(rules, "shell") == "deny" and all(r.get("effect") == "deny" for r in shell):
+        blocked.append("Bash")
+    return blocked
+
+
+def claude_wrapper(agent_id: str, fm: str) -> str:
+    desc = fm_field(fm, "description") or agent_id
+    lines = ["---", f"name: {agent_id}", f"description: {json.dumps(desc, ensure_ascii=False)}"]
+    blocked = blocked_tools(fm)
+    if blocked:
+        lines.append("disallowedTools: " + ", ".join(blocked))
+    lines += ["---", "", f"Read `.opencode/agents/{agent_id}.md` and follow it in full. It is the {WRAPPER_MARKER},",
+              "shared by OpenCode and Claude Code.", ""]
+    return "\n".join(lines)
+
+
+def sync_claude_adapters() -> None:
+    """Derive .claude agents, skills and commands from the canonical OpenCode sources.
+
+    Needs no manifest, so it also works on hand-maintained orchestrators
+    (`FEFO_ROOT=<repo> ./bin/fefo adapters`).
+    """
+    canonical = {p.stem: p for p in sorted((ROOT / ".opencode" / "agents").glob("*.md"))}
+    for agent_id, path in canonical.items():
+        write_text(ROOT / ".claude" / "agents" / f"{agent_id}.md", claude_wrapper(agent_id, frontmatter(path)))
+    for path in sorted((ROOT / ".claude" / "agents").glob("*.md")):
+        if path.stem not in canonical and WRAPPER_MARKER in read_text(path):
+            remove(path)
+
+    skills = {p.parent.name for p in (ROOT / ".agents" / "skills").glob("*/SKILL.md")}
+    for skill_id in sorted(skills):
+        link(ROOT / ".claude" / "skills" / skill_id, f"../../.agents/skills/{skill_id}")
+    for path in sorted((ROOT / ".claude" / "skills").glob("*")):
+        if path.is_symlink() and os.readlink(path).startswith("../../.agents/skills/") and path.name not in skills:
+            remove(path)
+
+    commands = set()
+    for path in sorted((ROOT / ".opencode" / "commands").glob("*.md")):
+        fm = frontmatter(path)
+        specific = [name for name in OPENCODE_ONLY_COMMAND_FIELDS if fm_field(fm, name) is not None]
+        if specific:
+            print(f"skip  .opencode/commands/{path.name}: OpenCode-only frontmatter {specific}")
+            continue
+        commands.add(path.name)
+        link(ROOT / ".claude" / "commands" / path.name, f"../../.opencode/commands/{path.name}")
+    for path in sorted((ROOT / ".claude" / "commands").glob("*.md")):
+        if path.is_symlink() and os.readlink(path).startswith("../../.opencode/commands/") and path.name not in commands:
+            remove(path)
+
+
+def normalized(command: list) -> list:
+    return [arg[2:] if str(arg).startswith("./") else arg for arg in command]
+
+
+def check_mcp_parity() -> list[str]:
+    """Compare opencode.json with .mcp.json / .claude/settings.json (checked, never written)."""
+    problems: list[str] = []
+    config = ROOT / "opencode.json"
+    if not config.is_file():
+        return problems
+    servers = read_json(config).get("mcp", {}).get("servers", {})
+    claude_file = ROOT / ".mcp.json"
+    claude = read_json(claude_file).get("mcpServers", {}) if claude_file.is_file() else {}
+    settings_file = ROOT / ".claude" / "settings.json"
+    disabled = set(read_json(settings_file).get("disabledMcpjsonServers", [])) if settings_file.is_file() else set()
+    for name in sorted(set(servers) | set(claude)):
+        ours, theirs = servers.get(name), claude.get(name)
+        if ours is None:
+            problems.append(f"mcp {name}: only in .mcp.json")
+            continue
+        if theirs is None:
+            if ours.get("type") == "remote":
+                print(f"info  mcp {name}: remote server, OpenCode-only")
+            else:
+                problems.append(f"mcp {name}: only in opencode.json")
+            continue
+        if ours.get("type") == "local":
+            same = normalized(ours["command"]) == normalized([theirs.get("command"), *theirs.get("args", [])]) \
+                and ours.get("environment", {}) == theirs.get("env", {})
+            if not same:
+                problems.append(f"mcp {name}: command or environment differs")
+        if bool(ours.get("disabled")) != (name in disabled):
+            problems.append(f"mcp {name}: disabled in one harness only (.claude/settings.json disabledMcpjsonServers)")
+    return problems
+
+
 def generate_claude(manifest: dict) -> None:
     write_json(ROOT / ".mcp.json", {"mcpServers": claude_servers(manifest)})
     disabled = [
@@ -599,63 +865,17 @@ def generate_claude(manifest: dict) -> None:
     ]
     settings = {
         "$schema": "https://json.schemastore.org/claude-code-settings.json",
-        "permissions": {"ask": [f"Bash({resource})" for resource in GIT_ASKS]},
+        "permissions": {
+            "ask": [f"Bash({resource})" for resource in GIT_ASKS],
+            "deny": [f"Bash({resource})" for resource in GIT_DENIES],
+        },
     }
     if disabled:
         settings["disabledMcpjsonServers"] = disabled
+    settings = deep_merge(settings, manifest.get("claude_settings") or {})
     write_json(ROOT / ".claude" / "settings.json", settings)
     write_text(ROOT / "CLAUDE.md", f"# {manifest['name']}\n\n@AGENTS.md\n@AGENTS.local.md\n")
-
-    agents_dir = ROOT / ".claude" / "agents"
-    agents_dir.mkdir(parents=True, exist_ok=True)
-    canonical = {}
-    for path in sorted((ROOT / ".opencode" / "agents").glob("*.md")):
-        text = path.read_text()
-        fm = re.match(r"^---\n(.*?)\n---", text, re.S)
-        fm = fm.group(1) if fm else ""
-        desc = re.search(r"^description:\s*(.+)$", fm, re.M)
-        desc = desc.group(1).strip().strip("\"'") if desc else path.stem
-        canonical[path.stem] = (desc, bool(re.search(
-            r"action:\s*edit\s*\n\s*resource:[^\n]*\n\s*effect:\s*deny", fm)))
-    for agent_id, (desc, deny) in canonical.items():
-        lines = ["---", f"name: {agent_id}", f"description: {json.dumps(desc, ensure_ascii=False)}"]
-        if deny:
-            lines.append("disallowedTools: Edit, Write")
-        lines += ["---", "", f"Read `.opencode/agents/{agent_id}.md` and follow it in full.",
-                  "It is the canonical definition of this agent, shared by OpenCode and Claude Code.", ""]
-        write_text(agents_dir / f"{agent_id}.md", "\n".join(lines))
-    marker = "canonical definition of this agent"
-    for path in agents_dir.glob("*.md"):
-        if path.stem not in canonical and marker in path.read_text():
-            path.unlink()
-
-    skills_dir = ROOT / ".claude" / "skills"
-    skills_dir.mkdir(parents=True, exist_ok=True)
-    for skill in sorted((ROOT / ".agents" / "skills").glob("*/SKILL.md")):
-        link = skills_dir / skill.parent.name
-        target = f"../../.agents/skills/{skill.parent.name}"
-        if link.is_symlink() and os.readlink(link) == target:
-            continue
-        if link.exists() or link.is_symlink():
-            if link.is_symlink():
-                link.unlink()
-            else:
-                continue
-        link.symlink_to(target)
-
-    commands_dir = ROOT / ".claude" / "commands"
-    commands_dir.mkdir(parents=True, exist_ok=True)
-    for command in sorted((ROOT / ".opencode" / "commands").glob("*.md")):
-        link = commands_dir / command.name
-        target = f"../../.opencode/commands/{command.name}"
-        if link.is_symlink() and os.readlink(link) == target:
-            continue
-        if link.exists() or link.is_symlink():
-            if link.is_symlink():
-                link.unlink()
-            else:
-                continue
-        link.symlink_to(target)
+    sync_claude_adapters()
 
 
 def generate_cursor(manifest: dict) -> None:
@@ -685,6 +905,8 @@ delegates; `backend` owns API layers; `frontend` owns web layers; `database`,
 4. Never commit, push, merge, rebase, or hard reset without permission.
 5. Keep durable knowledge in `docs/vault/`.
 6. Run the repository's focused checks before claiming completion.
+7. Subagents run in the background: launch independent ones together, never poll,
+   and start dependent work only after the prerequisite reports.
 """
     write_text(ROOT / ".cursor" / "rules" / "fefo.mdc", content)
 
@@ -705,6 +927,8 @@ multiple independent repositories. See `AGENTS.md` for the full routing.
 - Never commit, push, merge, rebase, or hard reset without permission.
 - Keep durable knowledge in `docs/vault/`.
 - Run the repository's focused checks before claiming completion.
+- Subagents run in the background: launch independent ones together, never poll,
+  and start dependent work only after the prerequisite reports.
 """
     write_text(ROOT / ".github" / "copilot-instructions.md", content)
 
@@ -720,6 +944,17 @@ Generated from the manifest:
   `.github/copilot-instructions.md`, `CLAUDE.md`
 - `AGENTS.md`, `docs/vault/`, `codegraph/README.md`
 
+Customize generated config without editing it by hand. FEFO deep-merges these
+manifest fields into the output on every `sync` (objects merge, lists append,
+`command`/`args` replace):
+
+- `plugins` — OpenCode plugins (for example `opencode-fefo`)
+- `opencode` — extra `opencode.json` settings (`agents`, `formatter`, `skills`, ...)
+- `claude_settings` — extra `.claude/settings.json` settings (hooks, permissions)
+- `mcp_servers` — extra MCP servers (`./bin/fefo mcp add`)
+
+Check for drift without writing: `./bin/fefo sync --check`.
+
 User-owned files that FEFO does not overwrite:
 
 - `AGENTS.local.md`
@@ -728,21 +963,30 @@ User-owned files that FEFO does not overwrite:
 """)
 
 
-def sync_all(manifest: dict) -> None:
-    if not (ROOT / "AGENTS.local.md").exists():
-        write_text(ROOT / "AGENTS.local.md", generate_agents_local())
-    write_text(ROOT / "AGENTS.md", generate_agents_md(manifest))
-    generate_opencode(manifest)
-    generate_vault(manifest)
-    generate_codegraph_readme(manifest)
-    generate_fefo_readme(manifest)
-    if "claude" in manifest.get("harnesses", []):
-        generate_claude(manifest)
-    if "cursor" in manifest.get("harnesses", []):
-        generate_cursor(manifest)
-    if "copilot" in manifest.get("harnesses", []):
-        generate_copilot(manifest)
-    save_manifest(manifest)
+def sync_all(manifest: dict, check: bool = False) -> list[str]:
+    """Regenerate every adapter; with check=True only report what would change."""
+    global CHECK
+    CHECK = check
+    DRIFT.clear()
+    CONFLICTS.clear()
+    try:
+        if not (ROOT / "AGENTS.local.md").exists():
+            write_text(ROOT / "AGENTS.local.md", generate_agents_local())
+        write_text(ROOT / "AGENTS.md", generate_agents_md(manifest))
+        generate_opencode(manifest)
+        generate_vault(manifest)
+        generate_codegraph_readme(manifest)
+        generate_fefo_readme(manifest)
+        if "claude" in manifest.get("harnesses", []):
+            generate_claude(manifest)
+        if "cursor" in manifest.get("harnesses", []):
+            generate_cursor(manifest)
+        if "copilot" in manifest.get("harnesses", []):
+            generate_copilot(manifest)
+        save_manifest(manifest)
+    finally:
+        CHECK = False
+    return list(DRIFT)
 
 
 # ---------------------------------------------------------------------------
@@ -762,10 +1006,29 @@ def print_status(manifest: dict) -> None:
         print("FEFO: no repositories yet. Run `./bin/fefo add <path>`.")
         return
     print(f"FEFO workspace: {manifest['name']}")
-    print(f"Model: {manifest['provider']['model']}\n")
+    print(f"Model: {manifest_model(manifest) or 'session model (none pinned)'}\n")
     print(f"{'REPO':<20} {'ROLE':<12} {'STACK':<10} {'INDEX':<10} PATH")
     for repo in manifest["repos"]:
         print(f"{repo['name']:<20} {repo['role']:<12} {repo['stack']:<10} {index_status(repo):<10} {repo['path']}")
+
+
+DEPRECATED_CONFIG_KEYS = {
+    "agent", "mode", "tools", "permission", "provider", "command", "plugin", "reference",
+    "snapshot", "attachment", "layout", "subagent_depth", "small_model", "autoupdate",
+    "autoshare", "logLevel", "server", "disabled_providers", "enabled_providers",
+}
+
+
+def opencode_version() -> tuple[int, ...] | None:
+    exe = shutil.which("opencode")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=15).stdout
+    except Exception:
+        return None
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
+    return tuple(int(part) for part in match.groups()) if match else None
 
 
 def doctor(manifest: dict) -> int:
@@ -804,6 +1067,61 @@ def doctor(manifest: dict) -> int:
             err("Claude adapter missing: .claude/settings.json")
         else:
             ok("Claude adapter present")
+
+    version = opencode_version()
+    if version is None:
+        warn("opencode CLI not found on PATH; cannot check its version")
+    elif version < MIN_OPENCODE:
+        warn(f"OpenCode {'.'.join(map(str, version))} is older than {'.'.join(map(str, MIN_OPENCODE))}; "
+             "background subagents and the documented config need 2.3.0+")
+    else:
+        ok(f"opencode {'.'.join(map(str, version))}")
+
+    config = ROOT / "opencode.json"
+    if config.is_file():
+        try:
+            deprecated = sorted(set(read_json(config)) & DEPRECATED_CONFIG_KEYS)
+        except ValueError as exc:
+            err(f"opencode.json is not valid JSON: {exc}")
+        else:
+            if deprecated:
+                warn(f"opencode.json uses deprecated keys: {', '.join(deprecated)}")
+
+    for kind in ("agents", "commands"):
+        for path in sorted((ROOT / ".opencode" / kind).glob("*.md")):
+            fm = frontmatter(path)
+            if not fm:
+                warn(f"{rel(path)}: missing frontmatter")
+                continue
+            keys = set(re.findall(r"^([A-Za-z_]+):", fm, re.M))
+            old = [k for k in DEPRECATED_AGENT_FIELDS if k in keys]
+            if old:
+                warn(f"{rel(path)}: deprecated V1 frontmatter ({', '.join(old)}); use `permissions:` rules")
+            if kind != "agents":
+                continue
+            if "description" not in keys:
+                warn(f"{rel(path)}: agent without description (the subagent catalog shows it to the model)")
+            if "model" in keys:
+                warn(f"{rel(path)}: pins a model; FEFO agents inherit the session model")
+            rules = permission_rules(fm)
+            if rule_effect(rules, "edit") == "deny" and rule_effect(rules, "shell") != "deny":
+                warn(f"{rel(path)}: denies edit but can still write through the shell tool")
+
+    for name, cfg in (manifest.get("mcp_servers") or {}).items():
+        secrets = {**(cfg.get("headers") or {}), **(cfg.get("environment") or {})}
+        for key, value in secrets.items():
+            if isinstance(value, str) and re.search(r"(?i)auth|token|key|secret|pass", key) \
+                    and "{env:" not in value and "{file:" not in value:
+                warn(f"MCP {name}: '{key}' holds a literal value; use {{env:...}} or {{file:...}}")
+
+    drift = sync_all(manifest, check=True)
+    if CONFLICTS:
+        err(f"harness adapters blocked by real files: {', '.join(CONFLICTS[:5])}")
+    if drift:
+        shown = ", ".join(drift[:6]) + (" ..." if len(drift) > 6 else "")
+        warn(f"{len(drift)} generated file(s) out of date: {shown} (run ./bin/fefo sync)")
+    else:
+        ok("generated files in sync")
     print(f"\n{errors} error(s), {warnings} warning(s)")
     return 1 if errors else 0
 
@@ -819,7 +1137,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("init", help="create a FEFO workspace")
     p.add_argument("--name", default=None)
     p.add_argument("--repo", action="append", default=[])
-    p.add_argument("--provider-model", default=DEFAULT_MODEL)
+    p.add_argument("--provider-model", default=None,
+                   help=f"pin a model for the workspace (for example {RECOMMENDED_MODEL}); default: none")
     p.add_argument("--harness", action="append", choices=HARNESSES, default=None)
     p.add_argument("--no-index", action="store_true")
     p.add_argument("--force", action="store_true")
@@ -843,7 +1162,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=cmd_remove)
 
     p = sub.add_parser("sync", help="regenerate config and adapters")
+    p.add_argument("--check", action="store_true", help="report generated files that are out of date; write nothing")
     p.set_defaults(func=cmd_sync)
+
+    p = sub.add_parser("adapters", help="derive Claude agents, skills and commands from .opencode/.agents")
+    p.add_argument("--check", action="store_true", help="report drift; write nothing")
+    p.set_defaults(func=cmd_adapters)
 
     p = sub.add_parser("index", help="refresh CodeGraph indexes")
     p.add_argument("names", nargs="*")
@@ -925,9 +1249,41 @@ def cmd_remove(args) -> int:
 
 def cmd_sync(args) -> int:
     manifest = load_manifest()
+    if args.check:
+        drift = sync_all(manifest, check=True)
+        for path in drift:
+            print(f"DRIFT {path}")
+        if drift or CONFLICTS:
+            print(f"FEFO: {len(drift)} generated file(s) out of date; run ./bin/fefo sync")
+            return 1
+        print("FEFO: workspace in sync")
+        return 0
     sync_all(manifest)
     print("FEFO: workspace synchronized")
     return 0
+
+
+def cmd_adapters(args) -> int:
+    """Claude adapters only. Needs no manifest: FEFO_ROOT=<orchestrator> ./bin/fefo adapters --check."""
+    global CHECK
+    CHECK = args.check
+    DRIFT.clear()
+    CONFLICTS.clear()
+    try:
+        sync_claude_adapters()
+    finally:
+        CHECK = False
+    problems = check_mcp_parity()
+    for path in DRIFT:
+        print(("DRIFT " if args.check else "fix   ") + path)
+    for problem in problems:
+        print("DRIFT " + problem)
+    failed = bool(CONFLICTS or problems or (args.check and DRIFT))
+    if failed:
+        print("FEFO: harness adapters out of sync" + ("; run without --check to regenerate" if args.check else ""))
+    else:
+        print("FEFO: harness adapters in sync")
+    return 1 if failed else 0
 
 
 def cmd_index(args) -> int:

@@ -2,7 +2,7 @@
   "fefo": 1,
   "name": "Example Workspace",
   "provider": {
-    "model": "opencode-go/deepseek-v4.1-flash"
+    "model": null
   },
   "harnesses": ["opencode", "claude", "cursor", "copilot"],
   "repos": [
@@ -31,5 +31,8 @@
       }
     }
   ],
+  "plugins": [],
+  "opencode": {},
+  "claude_settings": {},
   "mcp_servers": {}
 }
