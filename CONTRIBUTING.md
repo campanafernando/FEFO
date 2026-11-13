@@ -20,9 +20,10 @@ Python file.
    ./bin/fefo init --name Test --repo ../some-repo --no-index --yes
    ./bin/fefo doctor
    ```
-4. Regenerate adapters in the real workspace:
+4. Regenerate adapters in the real workspace, then confirm nothing drifted:
    ```sh
    ./bin/fefo sync
+   ./bin/fefo sync --check
    ```
 5. Keep generated files in sync; never hand-edit a generated adapter.
 
@@ -31,7 +32,7 @@ Python file.
 - One responsibility per agent.
 - No hardcoded model.
 - Frontmatter: `description`, `mode: subagent`.
-- Read-only agents deny `edit` in `permissions`.
+- Read-only agents deny `edit` **and** `shell` in `permissions`, then allow a short list of read-only shell commands (see `architect.md`). `./bin/fefo doctor` warns when an agent denies `edit` but can still write through the shell.
 - Add the agent to `docs/agents.md` and the routing table in the generated
   `AGENTS.md` template inside `tools/fefo.py`.
 

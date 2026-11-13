@@ -31,8 +31,11 @@ workspace/
 {
   "fefo": 1,
   "name": "My Workspace",
-  "provider": { "model": "opencode-go/deepseek-v4.1-flash" },
+  "provider": { "model": null },
   "harnesses": ["opencode", "claude", "cursor", "copilot"],
+  "plugins": [],
+  "opencode": {},
+  "claude_settings": {},
   "repos": [
     {
       "name": "api",
@@ -69,7 +72,10 @@ manifest
   └── codegraph/          index guidance
 ```
 
-`fefo sync` is idempotent. It writes a file only when the content changes.
+`fefo sync` is idempotent. It writes a file only when the content changes, so a
+no-op sync leaves the tree untouched; `fefo sync --check` lists what would change
+and writes nothing. Extra settings belong in the manifest (`plugins`, `opencode`,
+`claude_settings`, `mcp_servers`) and are deep-merged into the generated files.
 
 ## CodeGraph
 

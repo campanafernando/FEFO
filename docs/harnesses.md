@@ -13,8 +13,10 @@ Reads natively:
 - `.agents/skills/*/SKILL.md`
 - `AGENTS.md` and `AGENTS.local.md`
 
-The generated `fefo` agent is the primary entry point. The default provider is
-`opencode-go/deepseek-v4.1-flash`, but any provider/model can be used.
+The generated `fefo` agent is the primary entry point. No model is pinned unless
+the manifest sets `provider.model`; `opencode-go/deepseek-v4.1-flash` is the
+recommendation, but any provider/model can be used. OpenCode 2.3.0+ is expected:
+subagents always run in the background.
 
 ## Claude Code
 
@@ -57,6 +59,34 @@ commands, or MCP servers from FEFO.
 | Permissions | Native | `.claude/settings.json` | Manual | Manual |
 | Vault | Native | Native | Native | Native |
 
+## Customizing generated files
+
+Hand edits to `opencode.json` and `.claude/settings.json` are overwritten by
+`sync`. Put extra settings in the manifest instead; FEFO deep-merges them
+(objects merge, lists append without duplicates, `command`/`args` replace):
+
+```jsonc
+{
+  "plugins": ["opencode-fefo"],
+  "opencode": { "formatter": true },
+  "claude_settings": { "hooks": { "Stop": [] } }
+}
+```
+
+## Hand-maintained orchestrators
+
+The Claude adapters (`.claude/agents`, `.claude/skills`, `.claude/commands`) are
+derived from `.opencode/` and `.agents/skills/` and need no manifest, so the same
+generator can serve a repository that maintains its own `opencode.json`:
+
+```sh
+FEFO_ROOT=/path/to/orchestrator ./bin/fefo adapters --check
+FEFO_ROOT=/path/to/orchestrator ./bin/fefo adapters
+```
+
+It also checks `.mcp.json` and `disabledMcpjsonServers` against `opencode.json`
+and reports drift; it never rewrites those two files.
+
 ## Sync workflow
 
 ```sh
@@ -65,6 +95,9 @@ vim .opencode/agents/service.md
 
 # regenerate every adapter
 ./bin/fefo sync
+
+# confirm nothing is out of date (writes nothing; exit 1 on drift)
+./bin/fefo sync --check
 
 # validate
 ./bin/fefo doctor

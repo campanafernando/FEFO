@@ -68,6 +68,24 @@ cp .opencode/agents/specialist.md .opencode/agents/agriculture.md
 - Use one owner per file set.
 - Do not delegate the same scope to two agents.
 - At most four concurrent subagents per round.
-- Implement the glue in the primary agent.
+- Implement the glue in the primary agent, after every report is in.
 - A subagent may delegate one level only when the workspace enables
   `experimental.subagent_depth: 2`.
+
+## Background subagents (OpenCode 2.3+)
+
+The `subagent` tool returns immediately; the child runs in its own session and
+the parent receives a report each time the child goes idle.
+
+- Launch all independent subagents in one message.
+- Never poll, sleep, or re-check a child. Continue with non-overlapping work or
+  end the turn; the report arrives on its own.
+- Launch a dependent layer only after its prerequisite's report has arrived.
+- Reuse the child's `sessionID` to give it follow-up work.
+
+## Read-only agents
+
+`architect` and `security` deny `edit` and deny `shell` except a short allowlist
+of read-only commands (`git diff`, `git log`, `rg`, ...), so they cannot modify
+files through the shell either. In Claude Code the wrapper blocks `Edit` and
+`Write`; shell restrictions are OpenCode-only, so keep review prompts explicit.

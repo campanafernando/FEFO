@@ -17,7 +17,7 @@
 - [x] Register `fefo` tools and slash commands inside OpenCode
 - [x] Delegate to the workspace CLI without duplicating the generator
 - [ ] Bootstrap instructions for workspaces without the FEFO template
-- [x] Plugin smoke test against OpenCode 2.2.7+
+- [ ] Plugin smoke test against OpenCode 2.3.0+ (unit tests only so far)
 - [ ] Publish the plugin to npm
 
 ## v0.3 — opencode-zshell integration
@@ -38,6 +38,7 @@
 
 - [ ] `fefo init --template` for common stacks
 - [ ] Workspace bootstrap without cloning FEFO
+- [x] `fefo sync --check`, `fefo adapters --check` and a wider `fefo doctor`
 - [ ] GitHub Action that runs `fefo doctor` and `fefo sync --check`
 - [ ] Plugin published to npm
 - [ ] FEFO template published as a GitHub template repository

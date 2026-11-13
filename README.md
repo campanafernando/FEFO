@@ -35,7 +35,7 @@ FEFO keeps repositories independent and makes the federation explicit:
 
 ## Quick start
 
-Requirements: Git, Python 3.10+, OpenCode 2.2.7+, and the CodeGraph CLI on
+Requirements: Git, Python 3.10+, OpenCode 2.3.0+, and the CodeGraph CLI on
 `PATH` for indexing (optional but recommended).
 
 ```sh
@@ -86,7 +86,11 @@ The generated entry point is the `fefo` agent. From there:
 | `codegraph/README.md` | Index and MCP guidance |
 
 Generated files are replaced by `./bin/fefo sync`. Put user-owned text in
-`AGENTS.local.md` and `docs/vault/`.
+`AGENTS.local.md` and `docs/vault/`. To add settings to the generated
+`opencode.json` or `.claude/settings.json` (plugins, formatter, hooks, extra
+permissions), put them in the manifest — `plugins`, `opencode`,
+`claude_settings` — and they are deep-merged on every sync. A no-op `sync`
+changes nothing; `./bin/fefo sync --check` reports drift without writing.
 
 ## Repository roles
 
@@ -104,7 +108,7 @@ Generated files are replaced by `./bin/fefo sync`. Put user-owned text in
 | `library` | Reusable package |
 | `orchestrator` | Another holding repository |
 
-FEFO detects Django, FastAPI, Flask, Next.js, React, Flutter, docs, and
+FEFO detects Django, FastAPI, Flask, NestJS, Next.js, React, Flutter, docs, and
 infrastructure stacks. Override detection with `--stack`, `--role`, `--test`,
 `--lint`, and `--build`.
 
@@ -180,15 +184,16 @@ limitations.
 
 ## Provider recommendation
 
-FEFO does not require a provider. Choose the provider and model your account
-supports in `opencode.json` or through the OpenCode model picker.
+FEFO does not require a provider and, by default, pins no model: the workspace
+uses your global OpenCode default or the model you pick per session.
 
-Our recommendation for FEFO workspaces is **OpenCode Go** with
-**`deepseek-v4.1-flash`**. It has strong tool use, low latency, predictable cost,
-and a free Zen variant for experiments. Change it in `.fefo/workspace.json`:
+Our recommendation is **OpenCode Go** with **`deepseek-v4.1-flash`**. It has
+strong tool use, low latency, predictable cost, and a free Zen variant for
+experiments. To pin it for one workspace:
 
 ```sh
-# edit provider.model, then:
+./bin/fefo init --provider-model opencode-go/deepseek-v4.1-flash ...
+# or edit provider.model in .fefo/workspace.json, then:
 ./bin/fefo sync
 ```
 
@@ -209,6 +214,8 @@ Agents never pin a model, so switching providers is a workspace-level decision.
 ./bin/fefo add <path>           # add or update a repository
 ./bin/fefo remove <name>        # remove a repository
 ./bin/fefo sync                 # regenerate config and harness adapters
+./bin/fefo sync --check         # report generated files that are out of date
+./bin/fefo adapters [--check]   # derive .claude agents/skills/commands only
 ./bin/fefo index [name...]      # refresh CodeGraph indexes
 ./bin/fefo status               # repository and index overview
 ./bin/fefo doctor               # validate the workspace
