@@ -18,6 +18,31 @@ the manifest sets `provider.model`; `opencode-go/deepseek-v4.1-flash` is the
 recommendation, but any provider/model can be used. OpenCode 2.3.0+ is expected:
 subagents always run in the background.
 
+### Workspace boundary
+
+One `opencode.json` per federation, at the father root. Child repositories carry
+no harness files: no `opencode.json`, `.opencode/`, `.claude/`, `.cursor/`,
+`.mcp.json`, or `CLAUDE.md`.
+
+This works because OpenCode 2.3 merges configuration from the working directory
+up through its ancestors, including the `.opencode/` and `.agents/` directories,
+and because a local MCP `command` resolves from the directory of the document
+that declared it. Opening `child/` therefore still loads the father's agents,
+skills, commands, permissions, and MCP servers, with the father's paths intact.
+
+The child `AGENTS.md` is the only exception, and only as a pointer: it names the
+parent contract and lists conventions that are genuinely repo-local. It must not
+restate routing, agents, permissions, or MCP setup.
+
+Two caveats:
+
+- OpenCode 2.3.1 also reads `CLAUDE.md` in any directory that has no `AGENTS.md`,
+  and `~/.claude/CLAUDE.md` when there is no global `AGENTS.md`. A stray
+  `CLAUDE.md` in a child is a second, uncontrolled instruction channel; keep the
+  generated one at the father root only.
+- Run OpenCode at the father root when a task spans repositories. The `references`
+  entry gives the agent the path without changing the session directory.
+
 ## Claude Code
 
 Generated:

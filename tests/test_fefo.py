@@ -79,6 +79,9 @@ class FefoTest(unittest.TestCase):
         self.assertEqual(set(opencode["mcp"]["servers"]), {"codegraph-api", "codegraph-web"})
         self.assertEqual(opencode["default_agent"], "fefo")
         self.assertNotIn("model", opencode, "no model is pinned unless the manifest asks for one")
+        self.assertEqual(set(opencode["experimental"]), {"todo"}, "2.3 removed the subagent depth key")
+        self.assertEqual(set(opencode["references"]), {"api", "web"})
+        self.assertEqual(opencode["instructions"], ["AGENTS.md", "AGENTS.local.md"])
 
         claude = json.loads((self.workspace / ".mcp.json").read_text())
         self.assertEqual(set(claude["mcpServers"]), {"codegraph-api", "codegraph-web"})
@@ -214,6 +217,13 @@ class FefoTest(unittest.TestCase):
             "---\ndescription: x\nmode: subagent\npermissions:\n"
             "  - effect: deny\n    action: edit\n    resource: \"*\"\n---\nbody\n")
         self.assertIn("leaky.md: denies edit but can still write through the shell", self.run_fefo("doctor").stdout)
+
+    def test_doctor_flags_removed_experimental_key(self) -> None:
+        self.init_workspace()
+        config = json.loads((self.workspace / "opencode.json").read_text())
+        config["experimental"]["subagent_depth"] = 2
+        (self.workspace / "opencode.json").write_text(json.dumps(config))
+        self.assertIn("removed experimental keys: subagent_depth", self.run_fefo("doctor").stdout)
 
     def test_adapters_work_without_manifest(self) -> None:
         orchestrator = self.base / "orchestrator"

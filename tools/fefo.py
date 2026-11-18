@@ -664,7 +664,8 @@ def generate_opencode(manifest: dict) -> None:
             {"action": "fefo", "resource": "*", "effect": "ask"},
         ],
         "watcher": {"ignore": ["**/.codegraph/**", "**/node_modules/**", "**/.venv/**", "**/venv/**", "**/__pycache__/**"]},
-        "experimental": {"subagent_depth": 2, "todo": True},
+        # Subagents are always background since OpenCode 2.3; there is no depth cap left to set.
+        "experimental": {"todo": True},
         "references": references,
         "mcp": {"timeout": {"startup": 90000}, "servers": servers},
     }
@@ -1018,6 +1019,9 @@ DEPRECATED_CONFIG_KEYS = {
     "autoshare", "logLevel", "server", "disabled_providers", "enabled_providers",
 }
 
+# Removed from the experimental block by OpenCode 2.3; configs that still set them load but do nothing.
+DEPRECATED_EXPERIMENTAL_KEYS = {"subagent_depth", "background_compaction"}
+
 
 def opencode_version() -> tuple[int, ...] | None:
     exe = shutil.which("opencode")
@@ -1080,12 +1084,16 @@ def doctor(manifest: dict) -> int:
     config = ROOT / "opencode.json"
     if config.is_file():
         try:
-            deprecated = sorted(set(read_json(config)) & DEPRECATED_CONFIG_KEYS)
+            data = read_json(config)
         except ValueError as exc:
             err(f"opencode.json is not valid JSON: {exc}")
         else:
+            deprecated = sorted(set(data) & DEPRECATED_CONFIG_KEYS)
             if deprecated:
                 warn(f"opencode.json uses deprecated keys: {', '.join(deprecated)}")
+            dead = sorted(set(data.get("experimental") or {}) & DEPRECATED_EXPERIMENTAL_KEYS)
+            if dead:
+                warn(f"opencode.json sets removed experimental keys: {', '.join(dead)}")
 
     for kind in ("agents", "commands"):
         for path in sorted((ROOT / ".opencode" / kind).glob("*.md")):
