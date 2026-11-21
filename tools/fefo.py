@@ -98,6 +98,9 @@ SKELETON_PATHS = (
     ".opencode/agents",
     ".opencode/commands",
     ".agents/skills",
+    "docs/agents.md",
+    "docs/architecture.md",
+    "docs/harnesses.md",
     ".gitignore",
     "LICENSE",
 )

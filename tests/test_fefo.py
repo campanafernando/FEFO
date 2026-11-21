@@ -124,6 +124,9 @@ class FefoTest(unittest.TestCase):
             {"codegraph-exemplo-api", "codegraph-exemplo-web", "browse"},
         )
         self.assertTrue((workspace / ".opencode/agents/backend.md").is_file())
+        self.assertTrue((workspace / "docs/agents.md").is_file())
+        self.assertTrue((workspace / "docs/architecture.md").is_file())
+        self.assertTrue((workspace / "docs/harnesses.md").is_file())
         self.assertTrue((workspace / "bin/fefo").is_file())
         status = subprocess.run(
             [str(workspace / "bin" / "fefo"), "status"],
