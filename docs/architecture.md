@@ -78,6 +78,23 @@ no-op sync leaves the tree untouched; `fefo sync --check` lists what would chang
 and writes nothing. Extra settings belong in the manifest (`plugins`, `opencode`,
 `claude_settings`, `mcp_servers`) and are deep-merged into the generated files.
 
+## Bootstrap
+
+`fefo build` adopts the current directory instead of requiring a template clone:
+it copies `bin/`, `tools/`, `.opencode/agents`, `.opencode/commands` and
+`.agents/skills` from the installed template, scans the direct child directories
+that are Git roots, and then runs the normal generation. `fefo init` is the same
+command without the OpenCode phase; `fefo .` is shorthand for `build`.
+
+After the deterministic generation, `build` calls the user's OpenCode with a
+model picked like `doit` and a prompt derived from FEFO's rules. The agent may
+adjust `.fefo/workspace.json`, `AGENTS.local.md` and `docs/vault/repos/*.md`; it
+must not edit generated files or run Git. The CLI re-syncs afterwards.
+
+The separate `fefo-install` repository only downloads the template and links the
+CLI. FEFO stays the workspace reference and the source of the agents, skills and
+generator.
+
 ## CodeGraph
 
 Each repository gets its own MCP server:

@@ -37,7 +37,10 @@ class FefoTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def make_repo(self, name: str, stack: str) -> Path:
-        path = self.base / name
+        return self.make_repo_at(self.base, name, stack)
+
+    def make_repo_at(self, parent: Path, name: str, stack: str) -> Path:
+        path = parent / name
         path.mkdir()
         subprocess.run(["git", "-C", str(path), "init", "-q"], check=True)
         if stack == "django":
@@ -99,6 +102,117 @@ class FefoTest(unittest.TestCase):
 
         doctor = self.run_fefo("doctor")
         self.assertEqual(doctor.returncode, 0, doctor.stdout + doctor.stderr)
+
+    def test_build_adopts_current_directory_and_scans_repositories(self) -> None:
+        workspace = self.base / "EXEMPLO"
+        workspace.mkdir()
+        self.make_repo_at(workspace, "exemplo-api", "django")
+        self.make_repo_at(workspace, "exemplo-web", "next")
+        env = os.environ.copy()
+        env.pop("FEFO_ROOT", None)
+        result = subprocess.run(
+            [str(REPO / "bin" / "fefo"), "build", "--no-index", "--yes", "--no-ai"],
+            cwd=workspace, capture_output=True, text=True, env=env, timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = json.loads((workspace / ".fefo/workspace.json").read_text())
+        self.assertEqual([repo["name"] for repo in manifest["repos"]], ["exemplo-api", "exemplo-web"])
+        self.assertEqual([repo["role"] for repo in manifest["repos"]], ["api", "web"])
+        opencode = json.loads((workspace / "opencode.json").read_text())
+        self.assertEqual(
+            set(opencode["mcp"]["servers"]),
+            {"codegraph-exemplo-api", "codegraph-exemplo-web", "browse"},
+        )
+        self.assertTrue((workspace / ".opencode/agents/backend.md").is_file())
+        self.assertTrue((workspace / "bin/fefo").is_file())
+        status = subprocess.run(
+            [str(workspace / "bin" / "fefo"), "status"],
+            cwd=workspace, capture_output=True, text=True, env=env, timeout=30,
+        )
+        self.assertIn("exemplo-api", status.stdout)
+
+    def test_dot_is_shorthand_for_build(self) -> None:
+        workspace = self.base / "DOT"
+        workspace.mkdir()
+        self.make_repo_at(workspace, "api", "django")
+        env = os.environ.copy()
+        env.pop("FEFO_ROOT", None)
+        result = subprocess.run(
+            [str(REPO / "bin" / "fefo"), ".", "--no-index", "--yes", "--no-ai"],
+            cwd=workspace, capture_output=True, text=True, env=env, timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((workspace / ".fefo/workspace.json").is_file())
+
+    def test_build_runs_the_opencode_agent(self) -> None:
+        workspace = self.base / "AI"
+        workspace.mkdir()
+        self.make_repo_at(workspace, "api", "django")
+        fakebin = self.base / "fakebin-build"
+        fakebin.mkdir()
+        fake = fakebin / "opencode"
+        fake.write_text(
+            "#!/bin/sh\n"
+            "case \"$*\" in\n"
+            "  models) exit 0 ;;\n"
+            "  *\"run \"*) echo ran > ai-ran.txt; printf '%s\\n' '{\"type\":\"text\",\"part\":{\"text\":\"build done\"}}' ;;\n"
+            "  session*) printf '[]\\n' ;;\n"
+            "  *) exit 0 ;;\n"
+            "esac\n"
+        )
+        fake.chmod(0o755)
+        env = os.environ.copy()
+        env.pop("FEFO_ROOT", None)
+        env["PATH"] = f"{fakebin}:{env['PATH']}"
+        env["XDG_CACHE_HOME"] = str(self.base / "cache")
+        result = subprocess.run(
+            [str(REPO / "bin" / "fefo"), "build", "--no-index", "--yes"],
+            cwd=workspace, capture_output=True, text=True, env=env, timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("build done", result.stdout)
+        self.assertTrue((workspace / "ai-ran.txt").is_file())
+
+    def test_build_requires_opencode_without_no_ai(self) -> None:
+        workspace = self.base / "NOAI"
+        workspace.mkdir()
+        self.make_repo_at(workspace, "api", "django")
+        env = os.environ.copy()
+        env.pop("FEFO_ROOT", None)
+        env["PATH"] = "/bin"
+        result = subprocess.run(
+            [str(REPO / "bin" / "fefo"), "build", "--no-index", "--yes"],
+            cwd=workspace, capture_output=True, text=True, env=env, timeout=60,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("opencode not found", result.stderr)
+
+
+        repo = self.base / "api"
+        subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+        fakebin = self.base / "fakebin"
+        fakebin.mkdir()
+        fake = fakebin / "opencode"
+        fake.write_text(
+            "#!/bin/sh\n"
+            "case \"$*\" in\n"
+            "  models) exit 0 ;;\n"
+            "  *\"--title cmg\"*) printf '%s\\n' '{\"type\":\"text\",\"part\":{\"text\":\"feat(api): test message\"}}' ;;\n"
+            "  session*) printf '[]\\n' ;;\n"
+            "  *) exit 0 ;;\n"
+            "esac\n"
+        )
+        fake.chmod(0o755)
+        env = os.environ.copy()
+        env.pop("FEFO_ROOT", None)
+        env["PATH"] = f"{fakebin}:{env['PATH']}"
+        env["XDG_CACHE_HOME"] = str(self.base / "cache")
+        result = subprocess.run(
+            [str(REPO / "bin" / "fefo"), "cmg"],
+            cwd=repo, capture_output=True, text=True, env=env, timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('git commit -m "feat(api): test message"', result.stdout)
 
     def test_mcp_add_remove_and_status(self) -> None:
         self.assertEqual(self.run_fefo(

@@ -33,26 +33,52 @@ FEFO keeps repositories independent and makes the federation explicit:
 - `.opencode/agents/` is a modular agent base.
 - Generated adapters keep Claude, Cursor, and Copilot aligned.
 
-## Quick start
+## Install
+
+FEFO is the workspace reference; a separate installer repository,
+[`fefo-install`](https://github.com/campanafernando/fefo-install), puts the
+`fefo` CLI on your machine.
+
+```sh
+# Linux / macOS (zsh, bash)
+curl -fsSL https://raw.githubusercontent.com/campanafernando/fefo-install/main/install.sh | sh
+
+# Windows (PowerShell; cmd.exe uses the same fefo.cmd shim)
+irm https://raw.githubusercontent.com/campanafernando/fefo-install/main/install.ps1 | iex
+```
 
 Requirements: Git, Python 3.10+, OpenCode 2.3.0+, and the CodeGraph CLI on
-`PATH` for indexing (optional but recommended).
+`PATH` for indexing (optional but recommended). The installer is per-user, needs
+no `sudo`, and downloads this repository to `~/.local/share/fefo`
+(`%LOCALAPPDATA%\fefo` on Windows).
+
+## Build a workspace
+
+Journey: install OpenCode first, then FEFO, then let `fefo build` tune the
+workspace with your own OpenCode installation.
 
 ```sh
-git clone https://github.com/campanafernando/FEFO.git my-workspace
-cd my-workspace
-
-# Register the repositories that will join the federation.
-./bin/fefo init --name "My Workspace" \
-  --repo ../api \
-  --repo ../web
+opencode --version                 # prerequisite: OpenCode 2.3+
+mkdir -p ~/EXEMPLO && cd ~/EXEMPLO
+git clone <url> exemplo-api
+git clone <url> exemplo-web
+git clone <url> exemplo-micro
+fefo build        # or: fefo .
 ```
 
-Or interactively:
+`fefo build` runs two phases:
 
-```sh
-./bin/fefo init
-```
+1. Deterministic: copies the agents/skills skeleton, scans the direct Git
+   children, infers role, stack and test/lint/build commands, and writes the
+   OpenCode, Claude, Cursor and Copilot adapters.
+2. OpenCode: picks a model the same way `fefo doit` does (cached free model;
+   override with `BUILD_MODEL` or `--model`), then inspects each repository and
+   tunes `.fefo/workspace.json`, `AGENTS.local.md` and the vault notes following
+   FEFO's rules. It does not edit generated files or touch Git.
+
+Use `fefo build --no-ai` (or `fefo init`) for the deterministic result only. The
+manual alternative keeps working: clone this repository as the workspace and run
+`./bin/fefo init --repo ../api --repo ../web`.
 
 Then open OpenCode at the workspace root:
 
@@ -68,6 +94,23 @@ The generated entry point is the `fefo` agent. From there:
 /fefo-status
 /fefo-doctor
 ```
+
+## CLI helpers
+
+The same package ships the cross-platform helpers from
+[`opencode-zshell`](https://github.com/campanafernando/opencode-zshell), so they
+work in zsh, bash, PowerShell and cmd:
+
+```sh
+fefo cmg                  # suggest a Conventional Commit message
+fefo bng                  # suggest and create a branch from the diff
+fefo doit "task"          # run a task through OpenCode
+fefo doit --ask "task"    # review permissions instead of auto-allowing
+fefo doit -C ~/repo "task"
+```
+
+`opencode-zshell` keeps the bare `cmg`, `doit` and `bng` functions for zsh; no
+existing setup changes.
 
 ## What FEFO generates
 
@@ -218,7 +261,8 @@ Agents never pin a model, so switching providers is a workspace-level decision.
 ## CLI
 
 ```sh
-./bin/fefo init                 # create the workspace manifest
+./bin/fefo build               # adopt this directory and scan Git children
+./bin/fefo init                # same as build; explicit --repo also works
 ./bin/fefo add <path>           # add or update a repository
 ./bin/fefo remove <name>        # remove a repository
 ./bin/fefo sync                 # regenerate config and harness adapters
@@ -227,6 +271,9 @@ Agents never pin a model, so switching providers is a workspace-level decision.
 ./bin/fefo index [name...]      # refresh CodeGraph indexes
 ./bin/fefo status               # repository and index overview
 ./bin/fefo doctor               # validate the workspace
+./bin/fefo cmg                  # suggest a Conventional Commit message
+./bin/fefo bng                  # suggest and create a branch
+./bin/fefo doit "task"          # run a task through OpenCode
 ./bin/fefo mcp add|remove|list  # manage additional MCP servers
 ```
 

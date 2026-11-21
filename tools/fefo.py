@@ -15,11 +15,14 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(os.environ.get("FEFO_ROOT", Path(__file__).resolve().parents[1])).resolve()
+TEMPLATE = Path(__file__).resolve().parents[1]
+ROOT = Path(os.environ.get("FEFO_ROOT", TEMPLATE)).resolve()
 MANIFEST_PATH = ROOT / ".fefo" / "workspace.json"
 RECOMMENDED_MODEL = "opencode-go/deepseek-v4.1-flash"
 MIN_OPENCODE = (2, 3, 0)
@@ -68,6 +71,64 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text())
 
 
+def set_workspace_root(path: Path) -> None:
+    global ROOT, MANIFEST_PATH
+    ROOT = path.resolve()
+    MANIFEST_PATH = ROOT / ".fefo" / "workspace.json"
+
+
+def find_workspace(start: Path) -> Path | None:
+    for path in (start, *start.parents):
+        if (path / ".fefo" / "workspace.json").is_file():
+            return path
+    return None
+
+
+def resolve_workspace() -> None:
+    if os.environ.get("FEFO_ROOT"):
+        return
+    found = find_workspace(Path.cwd())
+    if found:
+        set_workspace_root(found)
+
+
+SKELETON_PATHS = (
+    "bin",
+    "tools",
+    ".opencode/agents",
+    ".opencode/commands",
+    ".agents/skills",
+    ".gitignore",
+    "LICENSE",
+)
+
+
+def copy_missing(source: Path, target: Path) -> None:
+    if source.name == "__pycache__":
+        return
+    if source.is_dir():
+        target.mkdir(parents=True, exist_ok=True)
+        for child in source.iterdir():
+            copy_missing(child, target / child.name)
+    elif not target.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+
+def copy_template_skeleton(target: Path) -> None:
+    for relative in SKELETON_PATHS:
+        source = TEMPLATE / relative
+        if source.exists():
+            copy_missing(source, target / relative)
+
+
+def scan_repos(root: Path) -> list[Path]:
+    return sorted(
+        path for path in root.iterdir()
+        if path.is_dir() and not path.name.startswith(".") and (path / ".git").exists()
+    )
+
+
 # In check mode nothing is written; changed paths collect in DRIFT.
 CHECK = False
 DRIFT: list[str] = []
@@ -100,7 +161,35 @@ def write_json(path: Path, data) -> None:
     write_text(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
+def same_tree(left: Path, right: Path) -> bool:
+    if not left.is_dir() or not right.is_dir():
+        return False
+    left_files = {path.relative_to(left) for path in left.rglob("*") if path.is_file()}
+    right_files = {path.relative_to(right) for path in right.rglob("*") if path.is_file()}
+    return left_files == right_files and all((left / name).read_bytes() == (right / name).read_bytes() for name in left_files)
+
+
 def link(path: Path, target: str) -> None:
+    if os.name == "nt" and not path.is_symlink():
+        source = (path.parent / target).resolve()
+        if path.is_dir() and same_tree(source, path):
+            return
+        if path.is_file() and source.is_file() and path.read_bytes() == source.read_bytes():
+            return
+        DRIFT.append(rel(path))
+        if CHECK:
+            return
+        if path.exists():
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, path)
+        else:
+            shutil.copy2(source, path)
+        return
     if path.is_symlink() and os.readlink(path) == target:
         return
     if path.exists() and not path.is_symlink():
@@ -118,7 +207,11 @@ def link(path: Path, target: str) -> None:
 
 def remove(path: Path) -> None:
     DRIFT.append(rel(path))
-    if not CHECK:
+    if CHECK:
+        return
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
         path.unlink()
 
 
@@ -494,12 +587,16 @@ are generated in `.claude/agents/`; Cursor and Copilot receive pointers in
 ## Commands
 
 ```sh
+./bin/fefo build               # adopt this directory and scan Git children
 ./bin/fefo add <path>          # add a repository and refresh the workspace
 ./bin/fefo remove <name>       # remove a repository
 ./bin/fefo sync                # regenerate config and harness adapters
 ./bin/fefo index [name...]     # refresh CodeGraph indexes
 ./bin/fefo status              # repository and index overview
 ./bin/fefo doctor              # validate workspace and harnesses
+./bin/fefo cmg                 # suggest a Conventional Commit message
+./bin/fefo bng                 # suggest and create a branch
+./bin/fefo doit "task"         # run a task through opencode
 ./bin/fefo mcp add ...         # add another MCP server
 ```
 
@@ -804,7 +901,8 @@ def sync_claude_adapters() -> None:
     for skill_id in sorted(skills):
         link(ROOT / ".claude" / "skills" / skill_id, f"../../.agents/skills/{skill_id}")
     for path in sorted((ROOT / ".claude" / "skills").glob("*")):
-        if path.is_symlink() and os.readlink(path).startswith("../../.agents/skills/") and path.name not in skills:
+        ours = path.is_symlink() and os.readlink(path).startswith("../../.agents/skills/")
+        if (ours or (os.name == "nt" and path.is_dir())) and path.name not in skills:
             remove(path)
 
     commands = set()
@@ -817,7 +915,8 @@ def sync_claude_adapters() -> None:
         commands.add(path.name)
         link(ROOT / ".claude" / "commands" / path.name, f"../../.opencode/commands/{path.name}")
     for path in sorted((ROOT / ".claude" / "commands").glob("*.md")):
-        if path.is_symlink() and os.readlink(path).startswith("../../.opencode/commands/") and path.name not in commands:
+        ours = path.is_symlink() and os.readlink(path).startswith("../../.opencode/commands/")
+        if (ours or os.name == "nt") and path.name not in commands:
             remove(path)
 
 
@@ -1130,20 +1229,32 @@ def doctor(manifest: dict) -> int:
     return 1 if errors else 0
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="fefo", description="FEFO workspace manager")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p = sub.add_parser("init", help="create a FEFO workspace")
+def add_init_parser(sub, name: str, help_text: str, builder: bool = False) -> None:
+    p = sub.add_parser(name, help=help_text)
+    p.add_argument("directory", nargs="?", default=None)
     p.add_argument("--name", default=None)
     p.add_argument("--repo", action="append", default=[])
     p.add_argument("--provider-model", default=None,
                    help=f"pin a model for the workspace (for example {RECOMMENDED_MODEL}); default: none")
     p.add_argument("--harness", action="append", choices=HARNESSES, default=None)
     p.add_argument("--no-index", action="store_true")
+    p.add_argument("--no-scan", action="store_true")
     p.add_argument("--force", action="store_true")
     p.add_argument("--yes", action="store_true")
-    p.set_defaults(func=cmd_init)
+    if builder:
+        p.add_argument("--no-ai", action="store_true", help="skip the OpenCode enrichment")
+        p.add_argument("--model", default=None, help="model for the build agent (default: cached free model)")
+        p.set_defaults(func=cmd_build)
+    else:
+        p.set_defaults(func=cmd_init)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="fefo", description="FEFO workspace manager")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    add_init_parser(sub, "init", "create a FEFO workspace deterministically")
+    add_init_parser(sub, "build", "adopt this directory and enrich it with OpenCode", builder=True)
 
     p = sub.add_parser("add", help="add a repository")
     p.add_argument("path")
@@ -1179,6 +1290,21 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("doctor", help="validate the workspace")
     p.set_defaults(func=cmd_doctor)
 
+    p = sub.add_parser("cmg", help="suggest a Conventional Commit message from the current diff")
+    p.set_defaults(func=cmd_cmg)
+
+    p = sub.add_parser("bng", help="suggest and create a branch from the current diff")
+    p.set_defaults(func=cmd_bng)
+
+    p = sub.add_parser("doit", help="run a task through opencode")
+    p.add_argument("--ask", "--safe", "--no-auto-allow", dest="allow", action="store_false")
+    p.add_argument("--allow", "--auto-allow", "--yes", dest="allow", action="store_true")
+    p.add_argument("-C", "--dir", default=None)
+    p.add_argument("-m", "--model", default=None)
+    p.add_argument("-i", "--interactive", action="store_true")
+    p.add_argument("task", nargs=argparse.REMAINDER)
+    p.set_defaults(allow=None, func=cmd_doit)
+
     p = sub.add_parser("mcp", help="manage additional MCP servers")
     msub = p.add_subparsers(dest="mcp_command", required=True)
     m = msub.add_parser("add", help="add a local or remote MCP server")
@@ -1199,6 +1325,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_init(args) -> int:
+    if getattr(args, "directory", None):
+        os.chdir(Path(args.directory).expanduser())
+    target = Path.cwd().resolve()
+    if target != ROOT:
+        set_workspace_root(target)
+    if target != TEMPLATE:
+        copy_template_skeleton(target)
     if MANIFEST_PATH.exists() and not args.force:
         raise SystemExit("FEFO: workspace already initialized; use --force to replace it.")
     name = args.name or ROOT.name
@@ -1207,6 +1340,11 @@ def cmd_init(args) -> int:
     if args.harness:
         manifest["harnesses"] = args.harness
     repos = list(args.repo)
+    if not repos and not args.no_scan:
+        scanned = scan_repos(ROOT)
+        if scanned:
+            print(f"FEFO: detected {len(scanned)} Git repositor{'y' if len(scanned) == 1 else 'ies'}")
+            repos = [str(path) for path in scanned]
     if not repos and not args.yes and sys.stdin.isatty():
         print(f"FEFO init — workspace: {name}")
         print("Enter repository paths one per line; leave blank to finish.")
@@ -1216,10 +1354,65 @@ def cmd_init(args) -> int:
                 break
             repos.append(value)
     for path in repos:
-        add_repo(manifest, path, index=not args.no_index)
+        repo = add_repo(manifest, path, index=not args.no_index)
+        print(f"FEFO: added {repo['name']} ({repo['role']}/{repo['stack']})")
     save_manifest(manifest)
     sync_all(manifest)
     print(f"FEFO: initialized {name} with {len(manifest['repos'])} repositories")
+    print_status(manifest)
+    return 0
+
+
+def cmd_build(args) -> int:
+    if not args.no_ai and not opencode_bin():
+        raise SystemExit("FEFO: opencode not found; install OpenCode 2.3+ or use --no-ai")
+    status = cmd_init(args)
+    if status != 0 or args.no_ai:
+        return status
+    model = opencode_pick_model(args.model or os.environ.get("BUILD_MODEL"))
+    manifest = load_manifest()
+    facts = "\n".join(
+        f"- {repo['name']}: role={repo['role']} stack={repo['stack']} path={repo['path']}" for repo in manifest["repos"]
+    )
+    context = write_temp_context("fefo-build.", "\n".join([
+        "# FEFO build context", "",
+        f"Workspace: {ROOT}", "",
+        "## Detected repositories", facts or "(none)", "",
+        "## Manifest", json.dumps(manifest, indent=2, ensure_ascii=False), "",
+    ]))
+    prompt = (
+        "You are the FEFO build agent. FEFO (Flow Execution via Federated Ontology) is the whitelabel "
+        "workspace reference: repositories stay independent and FEFO owns routing, standards, adapters and "
+        "the knowledge vault. The deterministic phase already created .fefo/workspace.json, opencode.json, "
+        ".mcp.json, AGENTS.md, AGENTS.local.md, docs/vault and the harness adapters. Read AGENTS.md and "
+        ".fefo/workspace.json, then inspect every cloned repository (README, manifests, entry points) and:\n"
+        "1. Correct role, stack, test, lint or build commands in .fefo/workspace.json only when the detected "
+        "value is wrong or missing. Keep the schema and existing keys.\n"
+        "2. Fill AGENTS.local.md with concise federation-specific notes: what this workspace is, each "
+        "repository's responsibility, cross-repo contracts and non-obvious commands. Do not restate FEFO "
+        "routing or the generated AGENTS.md. Preserve existing user content; append or refine, never discard.\n"
+        "3. Extend docs/vault/repos/<name>.md under '## Domain notes' with durable knowledge you can verify "
+        "from the repository. Never invent facts; write that something is unknown when it is. Preserve "
+        "existing notes.\n"
+        "4. Do not edit generated files: opencode.json, .mcp.json, AGENTS.md, CLAUDE.md, .claude/, .cursor/, "
+        ".github/, codegraph/README.md or .opencode/bin/. Do not run fefo sync, git commit, push, merge, "
+        "rebase or reset. Do not touch secrets.\n"
+        "5. Follow FEFO conventions: PT for product/domain language, EN for code identifiers; comments only "
+        "for a non-obvious WHY. Finish with a short summary of what changed."
+    )
+    print(f"FEFO: enriching workspace with {model}")
+    answer = opencode_run_json([
+        "run", "-m", model, "--archived", "--auto", "--title", "fefo-build",
+        prompt, "--file", str(context),
+    ], int(os.environ.get("BUILD_TIMEOUT", "900") or "900"), cwd=ROOT)
+    context.unlink(missing_ok=True)
+    if not answer:
+        print("FEFO: build agent produced no output; keeping the deterministic workspace", file=sys.stderr)
+    else:
+        print(answer)
+    manifest = load_manifest()
+    sync_all(manifest)
+    print("FEFO: build complete")
     print_status(manifest)
     return 0
 
@@ -1403,9 +1596,389 @@ def cmd_mcp_list(args) -> int:
     return 0
 
 
+OPENCODE_BAD_MODEL_MARKERS = ("-vl", "vision", "omni", "embed", "tts", "image", "audio")
+OPENCODE_PREFERRED_MODELS = (
+    "deepseek-v4.1-flash-free", "big-pickle", "glm-5.3-flash-free",
+    "minimax-m3.1-flash-free", "qwen3.6-plus-free",
+)
+CONVENTIONAL_COMMIT = re.compile(
+    r"^(feat|fix|docs|refactor|test|chore|build|ci|perf|style|revert)"
+    r"(\([a-zA-Z0-9._-]+\))?: .+"
+)
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def opencode_bin() -> str | None:
+    return shutil.which("opencode")
+
+
+def opencode_command(args: list[str]) -> list[str] | None:
+    exe = opencode_bin()
+    if not exe:
+        return None
+    if os.name == "nt" and Path(exe).suffix.lower() in (".cmd", ".bat"):
+        return ["cmd.exe", "/c", exe, *args]
+    return [exe, *args]
+
+
+def opencode_cache_dir() -> Path:
+    base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    path = base / "opencode"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def opencode_pick_model(requested: str | None = None) -> str:
+    if requested:
+        return requested
+    cache = opencode_cache_dir() / "pick-model"
+    ttl = int(os.environ.get("OPENCODE_MODEL_CACHE_TTL", "3600") or "3600")
+    if cache.is_file() and 0 <= time.time() - cache.stat().st_mtime < ttl:
+        cached = cache.read_text().strip()
+        if cached:
+            return cached
+    live: set[str] = set()
+    command = opencode_command(["models"])
+    if command:
+        try:
+            output = subprocess.run(command, capture_output=True, text=True, timeout=3).stdout
+            live = {line.strip() for line in output.splitlines() if line.strip()}
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    models: dict = {}
+    try:
+        models = json.loads((opencode_cache_dir() / "models.json").read_text())
+    except Exception:
+        pass
+    free = []
+    for model, meta in ((models.get("opencode") or {}).get("models") or {}).items():
+        if any(marker in model.lower() for marker in OPENCODE_BAD_MODEL_MARKERS):
+            continue
+        cost = meta.get("cost") or {}
+        if cost.get("input") == 0 and cost.get("output") == 0:
+            limit = meta.get("limit") or {}
+            free.append((limit.get("context") or 0, limit.get("output") or 0, f"opencode/{model}"))
+    free.sort(reverse=True)
+    preferred = next((f"opencode/{m}" for m in OPENCODE_PREFERRED_MODELS if not live or f"opencode/{m}" in live), None)
+    from_live = next((model for _, _, model in free if model in live), None)
+    from_cache = free[0][2] if free else None
+    picked = preferred or from_live or from_cache or "opencode/deepseek-v4.1-flash-free"
+    try:
+        cache.write_text(picked + "\n")
+    except OSError:
+        pass
+    return picked
+
+
+def opencode_run_json(args: list[str], timeout: int, cwd: Path | None = None) -> str:
+    command = opencode_command(args)
+    if not command:
+        return ""
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, timeout=timeout,
+            cwd=str(cwd) if cwd else None,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    text = ""
+    for line in result.stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        part = event.get("part") or {}
+        if event.get("type") == "text" and isinstance(part.get("text"), str):
+            text += part["text"]
+    if text.strip():
+        return text.strip()
+    lines = [ANSI_ESCAPE.sub("", line).strip() for line in result.stdout.splitlines()]
+    lines = [line for line in lines if line and not line.startswith(">")]
+    return lines[-1] if lines else ""
+
+
+def opencode_session_cleanup(title: str, keep: int = 0) -> None:
+    command = opencode_command(["session", "list", "--format", "json"])
+    if not command:
+        return
+    stamp = opencode_cache_dir() / f"cleanup-{title}"
+    ttl = int(os.environ.get("OPENCODE_SESSION_CLEANUP_TTL", "86400") or "86400")
+    if stamp.is_file() and 0 <= time.time() - stamp.stat().st_mtime < ttl:
+        return
+    try:
+        stamp.write_text(str(int(time.time())))
+    except OSError:
+        pass
+    try:
+        sessions = json.loads(subprocess.run(command, capture_output=True, text=True, timeout=10).stdout)
+    except Exception:
+        return
+    ids = [s.get("id") for s in sessions if isinstance(s, dict) and s.get("title") == title and s.get("id")]
+    for session_id in ids[keep:]:
+        delete = opencode_command(["session", "delete", str(session_id)])
+        if delete:
+            try:
+                subprocess.run(delete, capture_output=True, text=True, timeout=10)
+            except Exception:
+                pass
+
+
+def git_run(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+
+def git_out(*args: str) -> str:
+    result = git_run(*args)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def write_temp_context(prefix: str, content: str) -> Path:
+    handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", prefix=prefix, suffix=".md", delete=False)
+    try:
+        handle.write(content)
+    finally:
+        handle.close()
+    return Path(handle.name)
+
+
+def clean_ai_line(text: str) -> str:
+    for line in reversed(text.splitlines()):
+        line = line.strip().strip("`").strip().strip('"').strip()
+        if line:
+            return line
+    return ""
+
+
+def cmd_cmg(args) -> int:
+    if git_run("rev-parse", "--is-inside-work-tree").returncode != 0:
+        print("cmg: not inside a git repository", file=sys.stderr)
+        return 1
+    state = ""
+    kind = "chore"
+    scope = "root"
+    source_branch = ""
+    target_branch = ""
+    incoming = ""
+    diff_args: list[str] = []
+    files: list[str] = []
+    if git_run("rev-parse", "--verify", "MERGE_HEAD").returncode == 0:
+        state, kind = "merge", "merge"
+        source_branch = git_out("rev-parse", "--abbrev-ref", "MERGE_HEAD").replace("remotes/origin/", "")
+        target_branch = git_out("rev-parse", "--abbrev-ref", "HEAD")
+        incoming = git_out("log", "--oneline", "HEAD..MERGE_HEAD")
+        files = git_out("diff", "MERGE_HEAD", "--name-only").splitlines()
+        diff_args = ["MERGE_HEAD"]
+    elif git_run("rev-parse", "--verify", "REBASE_HEAD").returncode == 0:
+        state, kind = "rebase", "rebase"
+        files = git_out("diff", "REBASE_HEAD", "--name-only").splitlines()
+        diff_args = ["REBASE_HEAD"]
+    elif git_run("rev-parse", "--verify", "CHERRY_PICK_HEAD").returncode == 0:
+        state, kind = "cherry-pick", "cherry-pick"
+        files = git_out("diff", "CHERRY_PICK_HEAD", "--name-only").splitlines()
+        diff_args = ["CHERRY_PICK_HEAD"]
+    else:
+        files = git_out("diff", "--cached", "--name-only").splitlines()
+        if files:
+            state = "staged"
+            diff_args = ["--cached"]
+        else:
+            state = "unstaged"
+            files = git_out("diff", "--name-only").splitlines()
+    files = [path for path in files if path.strip()]
+    if not files:
+        print("cmg: no staged or unstaged changes found", file=sys.stderr)
+        return 1
+    joined = "\n".join(files)
+    if kind == "chore":
+        if re.search(r"/test_|/tests/|test_factories|test_runner", joined):
+            kind = "test"
+        elif "/migrations/" in joined:
+            kind, scope = "feat", "migrations"
+        elif re.search(r"fix|hotfix", joined, re.I):
+            kind = "fix"
+        elif re.search(r"^docs/|README|\.md$", joined, re.M):
+            kind = "docs"
+        elif re.search(r"\.py$", joined, re.M) and "test" not in joined:
+            kind = "feat" if re.search(r"service|selector|view|model|serializer", joined) else "refactor"
+    if kind != "merge":
+        tops = [path.split("/", 1)[0] for path in files if not path.startswith(".")]
+        if not tops:
+            tops = [path.split("/", 1)[0] for path in files if path[:1].islower()]
+        if tops:
+            scope = max(set(tops), key=tops.count)
+        else:
+            scope = "root"
+        if kind == "docs":
+            docs = [path.split("/")[1] for path in files if path.startswith("docs/") and len(path.split("/")) > 2]
+            if docs:
+                scope = max(set(docs), key=docs.count)
+    diff_output = git_out("diff", *diff_args, "--stat")
+    print("")
+    print("┌─ Commit Preview ─────────────────────────────")
+    if state == "merge":
+        print(f"│ Merge branch '{source_branch}' → '{target_branch}'")
+        if incoming:
+            print("│")
+            for line in incoming.splitlines():
+                print(f"│  • {line}")
+            print("│")
+    print(f"│ Type: {kind}  Scope: {scope}  State: {state}  Files: {len(files)}")
+    print("├──────────────────────────────────────────────")
+    for path in files[:30]:
+        print(f"│  {path}")
+    if len(files) > 30:
+        print(f"│  ... +{len(files) - 30} more files")
+    print("├─ Diff ───────────────────────────────────────")
+    for line in diff_output.splitlines()[:20]:
+        print(f"│ {line}")
+    diff_lines = len(diff_output.splitlines())
+    if diff_lines > 20:
+        print(f"│ ... ({diff_lines - 20} more lines)")
+    print("└──────────────────────────────────────────────")
+    print("")
+    if kind == "merge":
+        fallback = f"merge: {source_branch} into {target_branch}"
+    elif scope and scope != "root":
+        fallback = f"{kind}({scope}): update changes"
+    else:
+        fallback = f"{kind}: update changes"
+    commit_message = fallback
+    if kind != "merge" and opencode_bin():
+        model = opencode_pick_model(os.environ.get("CMG_MODEL"))
+        diff_limit = int(os.environ.get("CMG_DIFF_LINES", "400") or "400")
+        context = write_temp_context("cmg.", "\n".join([
+            "# Commit context", "",
+            f"State: {state}", f"Type: {kind}", f"Scope: {scope}", f"Files: {len(files)}", "",
+            f"Preferred prefix: {fallback.replace(': update changes', '')}", "",
+            "## Git status", git_out("status", "--short"), "",
+            "## Changed files", *files, "",
+            "## Diff stat", diff_output, "",
+            f"## Diff (first {diff_limit} lines)",
+            "\n".join(git_out("diff", *diff_args, "--no-ext-diff", "--unified=3").splitlines()[:diff_limit]),
+        ]))
+        prompt = (
+            "Generate one Conventional Commit message for the attached git diff. Return exactly one line, "
+            "no markdown, no quotes, and no git command. Use English. Prefer the provided prefix unless the "
+            "diff clearly needs a better type or scope. Summarize the actual change, not the file list. Keep "
+            "it under 100 characters. Valid types: feat, fix, docs, refactor, test, chore, build, ci, perf, "
+            "style, revert."
+        )
+        print(f"Generating commit message with {model}...")
+        answer = opencode_run_json([
+            "run", "-m", model, "--archived", "--format", "json", "--title", "cmg",
+            prompt, "--file", str(context),
+        ], int(os.environ.get("CMG_TIMEOUT", "120") or "120"))
+        context.unlink(missing_ok=True)
+        candidate = clean_ai_line(answer)
+        if CONVENTIONAL_COMMIT.match(candidate):
+            commit_message = candidate
+        else:
+            print("cmg: AI did not return a valid Conventional Commit; using fallback.", file=sys.stderr)
+    opencode_session_cleanup("cmg", 0)
+    escaped = commit_message.replace("\\", "\\\\").replace('"', '\\"')
+    print("Suggested:")
+    print(f'  git commit -m "{escaped}"')
+    print("")
+    return 0
+
+
+def cmd_bng(args) -> int:
+    if git_run("rev-parse", "--is-inside-work-tree").returncode != 0:
+        print("bng: not inside a git repository", file=sys.stderr)
+        return 1
+    diff_args: list[str] = []
+    files = git_out("diff", "--cached", "--name-only").splitlines()
+    if files:
+        diff_args = ["--cached"]
+    else:
+        files = git_out("diff", "--name-only").splitlines()
+    if not [path for path in files if path.strip()]:
+        print("bng: no staged or unstaged changes found", file=sys.stderr)
+        return 1
+    model = opencode_pick_model(os.environ.get("BNG_MODEL"))
+    context = write_temp_context("bng.", "# Diff\n```diff\n" + "\n".join(
+        git_out("diff", *diff_args, "--no-ext-diff", "--unified=3").splitlines()[:2000]
+    ) + "\n```\n")
+    prompt = (
+        "Generate a short git branch name (kebab-case, max 40 chars) for the attached diff. Return exactly "
+        "one line: the branch name only, no markdown, no quotes, no explanation. Prefix with feat/ fix/ "
+        "refactor/ chore/ test/ docs/ based on the change type. Examples: feat/add-login-page, "
+        "fix/null-pointer-crash, refactor/simplify-auth."
+    )
+    print(f"Generating branch name with {model}...")
+    answer = opencode_run_json([
+        "run", "-m", model, "--archived", "--format", "json", "--title", "bng",
+        prompt, "--file", str(context),
+    ], int(os.environ.get("BNG_TIMEOUT", "120") or "120"))
+    context.unlink(missing_ok=True)
+    candidate = clean_ai_line(answer)
+    if candidate and len(candidate) <= 60:
+        branch = candidate
+    else:
+        branch = datetime.now().strftime("branch-%Y%m%d-%H%M%S")
+        print("bng: AI did not return a valid branch name; using fallback.", file=sys.stderr)
+    print(f"→ {branch}")
+    result = subprocess.run(["git", "checkout", "-b", branch])
+    opencode_session_cleanup("bng", 0)
+    return result.returncode
+
+
+def cmd_doit(args) -> int:
+    task = " ".join(args.task).strip()
+    if not task:
+        print("doit: missing task", file=sys.stderr)
+        print("doit: run 'fefo doit --help' for usage", file=sys.stderr)
+        return 2
+    directory = Path(args.dir or Path.cwd()).expanduser().resolve()
+    if not directory.is_dir():
+        print(f"doit: directory does not exist: {directory}", file=sys.stderr)
+        return 1
+    if not opencode_bin():
+        print("doit: opencode not found in PATH", file=sys.stderr)
+        return 1
+    allow = args.allow if args.allow is not None else os.environ.get("DOIT_SKIP_PERMISSIONS", "0") == "1"
+    model = opencode_pick_model(args.model or os.environ.get("DOIT_MODEL"))
+    context = write_temp_context("doit.", "\n".join([
+        "You are the automation agent behind the user's doit shell command.", "",
+        "User request:", task, "",
+        "Starting directory:", str(directory), "",
+        "Operate end-to-end from this directory, using absolute paths from the request exactly when provided. "
+        "You may inspect files, edit files, move files, and run commands as needed. Be careful with destructive "
+        "operations: ask for clarification instead of deleting, overwriting important data, resetting git state, "
+        "force-pushing, or touching secrets unless the user explicitly requested it. Preserve unrelated git "
+        "changes. Do not commit, amend, or push unless explicitly asked. When finished, summarize what changed "
+        "and any verification performed.",
+    ]))
+    prompt = "Execute the task described in the attached doit context."
+    print(f"doit: opencode model={model} dir={directory}")
+    if allow:
+        print("doit: auto-allow enabled: rules that only ask are approved too; use --ask to review")
+    if args.interactive:
+        command = opencode_command(["--prompt", prompt + "\n\n" + context.read_text()])
+    else:
+        run_args = ["run", "-m", model, "--title", "doit"]
+        if allow:
+            run_args.append("--auto")
+        run_args += ["--archived", prompt, "--file", str(context)]
+        command = opencode_command(run_args)
+    status = 1
+    if command:
+        try:
+            status = subprocess.run(command, cwd=str(directory)).returncode
+        except OSError as exc:
+            print(f"doit: failed to run opencode: {exc}", file=sys.stderr)
+    context.unlink(missing_ok=True)
+    opencode_session_cleanup("doit", 1)
+    return status
+
+
 def main() -> int:
+    argv = sys.argv[1:]
+    if argv and argv[0] == ".":
+        argv = ["build", *argv[1:]]
+    resolve_workspace()
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     return args.func(args)
 
 

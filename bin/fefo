@@ -1,4 +1,13 @@
 #!/usr/bin/env sh
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+SELF=$0
+while [ -L "$SELF" ]; do
+  DIR=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)
+  SELF=$(readlink "$SELF")
+  case "$SELF" in
+    /*) ;;
+    *) SELF="$DIR/$SELF" ;;
+  esac
+done
+ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd)
 exec python3 "$ROOT/tools/fefo.py" "$@"

@@ -36,8 +36,12 @@
 
 ## v0.5 — delivery
 
+- [x] `fefo build` / `fefo .` adopts an existing directory and scans Git children
+- [x] `fefo build` enriches the workspace with the user's OpenCode
+- [x] Separate `fefo-install` repository for Linux, macOS and Windows
+- [x] Cross-platform `cmg`, `doit` and `bng` in the FEFO CLI
 - [ ] `fefo init --template` for common stacks
-- [ ] Workspace bootstrap without cloning FEFO
+- [x] Workspace bootstrap without cloning FEFO
 - [x] `fefo sync --check`, `fefo adapters --check` and a wider `fefo doctor`
 - [ ] GitHub Action that runs `fefo doctor` and `fefo sync --check`
 - [ ] Plugin published to npm
