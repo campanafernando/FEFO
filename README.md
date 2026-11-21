@@ -11,8 +11,11 @@ OpenCode is the canonical harness. FEFO also generates adapters for Claude Code,
 Cursor, and GitHub Copilot from the same source, so a team can use different
 harnesses without forking the instructions.
 
-> FEFO is the template and reference implementation. The OpenCode plugin is the
-> lightweight runtime for an existing workspace, and `opencode-zshell` exposes
+> FEFO is the template and reference implementation.
+> [`fefo-install`](https://github.com/campanafernando/fefo-install) bootstraps the
+> CLI, the [`opencode-fefo`](https://github.com/campanafernando/opencode-fefo)
+> plugin is the lightweight runtime for an existing workspace, and
+> [`opencode-zshell`](https://github.com/campanafernando/opencode-zshell) exposes
 > the same commands from zsh.
 
 ## Why
@@ -252,11 +255,15 @@ Agents never pin a model, so switching providers is a workspace-level decision.
 
 ## Ecosystem
 
-| Project | Use it when |
+| Project | Role |
 |---|---|
-| **FEFO** (this repository) | You want the reference template, agents, vault, and CLI |
-| **`opencode-fefo` plugin** | You want FEFO commands inside an existing OpenCode workspace ([repo](https://github.com/campanafernando/opencode-fefo)) |
-| **`opencode-zshell`** | You want zsh helpers that call the plugin and OpenCode ([repo](https://github.com/campanafernando/opencode-zshell)) |
+| **FEFO** (this repository) | Reference template, generator and CLI |
+| **`fefo-install`** | One-command installer for Linux, macOS and Windows ([repo](https://github.com/campanafernando/fefo-install)) |
+| **`opencode-fefo` plugin** | FEFO commands and tools inside an existing OpenCode workspace ([repo](https://github.com/campanafernando/opencode-fefo)) |
+| **`opencode-zshell`** | zsh helpers for `cmg`, `doit`, `bng` and the `fefo` command ([repo](https://github.com/campanafernando/opencode-zshell)) |
+
+FEFO is the source of truth. `fefo-install` only downloads it and links the CLI;
+the plugin and the zsh layer delegate to that same CLI.
 
 ## CLI
 
@@ -293,9 +300,9 @@ Run `./bin/fefo <command> --help` for flags.
 
 ## Roadmap
 
-See [`docs/roadmap.md`](docs/roadmap.md). The next increments are the
-`opencode-fefo` plugin, the `opencode-zshell` integration, vault graph export,
-and a workspace bootstrap path for users who do not want to clone the template.
+See [`docs/roadmap.md`](docs/roadmap.md). The next increments are
+`fefo init --template` for common stacks, npm publication of the
+`opencode-fefo` plugin, a `fefo doctor` GitHub Action, and vault graph export.
 
 ## License
 
