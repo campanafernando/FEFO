@@ -21,7 +21,6 @@ from pathlib import Path
 
 ROOT = Path(os.environ.get("FEFO_ROOT", Path(__file__).resolve().parents[1])).resolve()
 MANIFEST_PATH = ROOT / ".fefo" / "workspace.json"
-# Suggested, never forced: a workspace pins a model only when the manifest says so.
 RECOMMENDED_MODEL = "opencode-go/deepseek-v4.1-flash"
 MIN_OPENCODE = (2, 3, 0)
 HARNESSES = ("opencode", "claude", "cursor", "copilot")
@@ -40,22 +39,15 @@ GIT_ASKS = [
     "git rebase *", "git -C * rebase *",
     "git reset --hard*", "git -C * reset --hard*",
 ]
-# Force-push is denied outright: `opencode run --auto` (used by scripted helpers)
-# approves everything that is only `ask`, so ask alone is not a guardrail.
+# Force-push is denied outright: `opencode run --auto` approves every `ask`.
 GIT_DENIES = [
     "git push --force*", "git push -f *", "git push * --force*", "git push * -f *",
     "git -C * push --force*", "git -C * push -f *", "git -C * push * --force*", "git -C * push * -f *",
 ]
 
-# Browse is built into every workspace: an MCP server plus a Chromium extension
-# that lets agents use the real browser (tabs, logins, network captures).
-# The launcher resolves the binary explicitly because some distros ship
-# /bin/browse -> xdg-open; `browse` on PATH would silently open a GUI instead.
 BROWSE_LAUNCHER_PATH = ".opencode/bin/browse-mcp.sh"
 BROWSE_LAUNCHER = """#!/usr/bin/env bash
-# Browse MCP: real browser tabs, logins, network captures and recordings.
-# browse installs to $XDG_BIN_HOME (~/.local/bin) or the package manager's global
-# bin; resolve it explicitly because some distros ship /bin/browse -> xdg-open.
+# Resolve the real browse binary: some distros ship /bin/browse -> xdg-open.
 set -euo pipefail
 
 for candidate in "${XDG_BIN_HOME:-$HOME/.local/bin}/browse" "$HOME/.bun/bin/browse"; do
@@ -67,10 +59,6 @@ exit 1
 """
 
 
-# ---------------------------------------------------------------------------
-# Files and manifest
-# ---------------------------------------------------------------------------
-
 def slugify(value: str) -> str:
     value = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower())
     return value.strip("-") or "repo"
@@ -80,8 +68,7 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text())
 
 
-# Every generated write goes through these helpers. In check mode nothing is
-# written; the paths that would change are collected in DRIFT instead.
+# In check mode nothing is written; changed paths collect in DRIFT.
 CHECK = False
 DRIFT: list[str] = []
 CONFLICTS: list[str] = []
@@ -180,8 +167,7 @@ def load_manifest(required: bool = True) -> dict:
 
 
 def save_manifest(data: dict) -> None:
-    # generated_at records creation only; rewriting it on every sync would make
-    # a no-op sync change the manifest.
+    # Creation time only; rewriting it on sync would break no-op syncs.
     if not data.get("generated_at"):
         data["generated_at"] = datetime.now(timezone.utc).isoformat()
     write_json(MANIFEST_PATH, data)
@@ -208,10 +194,6 @@ def validate_manifest(data: dict) -> None:
             raise SystemExit(f"FEFO: duplicate repo name: {repo['name']}")
         names.add(repo["name"])
 
-
-# ---------------------------------------------------------------------------
-# Repository detection
-# ---------------------------------------------------------------------------
 
 def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
@@ -391,10 +373,6 @@ def ensure_codegraph(path: Path) -> bool:
         return False
 
 
-# ---------------------------------------------------------------------------
-# Generated content
-# ---------------------------------------------------------------------------
-
 def repo_rows(manifest: dict) -> str:
     lines = ["| Repository | Role | Stack | Path | CodeGraph |", "|---|---|---|---|---|"]
     for repo in manifest["repos"]:
@@ -495,7 +473,9 @@ are generated in `.claude/agents/`; Cursor and Copilot receive pointers in
    Product/UX language follows the repository's own convention.
 7. **Tests are proof**: run the focused check first, then the repository's
    delivery checks. Do not claim a check that was not run.
-8. **No secrets** in generated files, vault notes, or model output.
+8. **Comments explain only a non-obvious WHY**, max 1–2 lines, in English. No
+   section banners, no comments that restate the code; names and types document.
+9. **No secrets** in generated files, vault notes, or model output.
 
 ## Knowledge
 
@@ -676,15 +656,13 @@ def generate_opencode(manifest: dict) -> None:
         "$schema": "https://opencode.ai/config.json",
         "default_agent": "fefo",
         "instructions": ["AGENTS.md", "AGENTS.local.md"],
-        # Last matching rule wins, so the force-push denies come after the asks.
+        # Last matching rule wins: denies come after the asks.
         "permissions": [
             *({"action": "shell", "resource": resource, "effect": "ask"} for resource in GIT_ASKS),
             *({"action": "shell", "resource": resource, "effect": "deny"} for resource in GIT_DENIES),
-            # opencode-fefo asks before any tool call that changes the workspace.
             {"action": "fefo", "resource": "*", "effect": "ask"},
         ],
         "watcher": {"ignore": ["**/.codegraph/**", "**/node_modules/**", "**/.venv/**", "**/venv/**", "**/__pycache__/**"]},
-        # Subagents are always background since OpenCode 2.3; there is no depth cap left to set.
         "experimental": {"todo": True},
         "references": references,
         "mcp": {"timeout": {"startup": 90000}, "servers": servers},
@@ -1012,10 +990,6 @@ def sync_all(manifest: dict, check: bool = False) -> list[str]:
     return list(DRIFT)
 
 
-# ---------------------------------------------------------------------------
-# Status and diagnostics
-# ---------------------------------------------------------------------------
-
 def index_status(repo: dict) -> str:
     db = repo_path(repo) / ".codegraph" / "codegraph.db"
     if not db.is_file():
@@ -1041,7 +1015,7 @@ DEPRECATED_CONFIG_KEYS = {
     "autoshare", "logLevel", "server", "disabled_providers", "enabled_providers",
 }
 
-# Removed from the experimental block by OpenCode 2.3; configs that still set them load but do nothing.
+# OpenCode 2.3 still loads these but they do nothing; doctor reports them.
 DEPRECATED_EXPERIMENTAL_KEYS = {"subagent_depth", "background_compaction"}
 
 
@@ -1155,10 +1129,6 @@ def doctor(manifest: dict) -> int:
     print(f"\n{errors} error(s), {warnings} warning(s)")
     return 1 if errors else 0
 
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fefo", description="FEFO workspace manager")
