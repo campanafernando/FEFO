@@ -68,7 +68,7 @@ def slugify(value: str) -> str:
 
 
 def read_json(path: Path) -> dict:
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def set_workspace_root(path: Path) -> None:
@@ -151,13 +151,13 @@ def ensure_dir(path: Path) -> None:
 
 
 def write_text(path: Path, content: str) -> None:
-    if path.is_file() and not path.is_symlink() and path.read_text() == content:
+    if path.is_file() and not path.is_symlink() and path.read_text(encoding="utf-8") == content:
         return
     DRIFT.append(rel(path))
     if CHECK:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8", newline="\n")
 
 
 def write_json(path: Path, data) -> None:
@@ -320,7 +320,7 @@ def repo_path(repo: dict) -> Path:
 
 def read_text(path: Path) -> str:
     try:
-        return path.read_text(errors="ignore")
+        return path.read_text(encoding="utf-8", errors="ignore")
     except Exception:
         return ""
 
@@ -661,7 +661,7 @@ def generated_block(repo: dict) -> str:
 
 def update_generated_block(path: Path, block: str, header: str) -> None:
     if path.is_file():
-        text = path.read_text()
+        text = read_text(path)
         start = text.find("<!-- fefo:generated:start -->")
         end = text.find("<!-- fefo:generated:end -->")
         if start != -1 and end != -1:
@@ -1637,7 +1637,7 @@ def opencode_pick_model(requested: str | None = None) -> str:
     cache = opencode_cache_dir() / "pick-model"
     ttl = int(os.environ.get("OPENCODE_MODEL_CACHE_TTL", "3600") or "3600")
     if cache.is_file() and 0 <= time.time() - cache.stat().st_mtime < ttl:
-        cached = cache.read_text().strip()
+        cached = cache.read_text(encoding="utf-8").strip()
         if cached:
             return cached
     live: set[str] = set()
@@ -1650,7 +1650,7 @@ def opencode_pick_model(requested: str | None = None) -> str:
             pass
     models: dict = {}
     try:
-        models = json.loads((opencode_cache_dir() / "models.json").read_text())
+        models = json.loads((opencode_cache_dir() / "models.json").read_text(encoding="utf-8"))
     except Exception:
         pass
     free = []
@@ -1667,7 +1667,7 @@ def opencode_pick_model(requested: str | None = None) -> str:
     from_cache = free[0][2] if free else None
     picked = preferred or from_live or from_cache or "opencode/deepseek-v4.1-flash-free"
     try:
-        cache.write_text(picked + "\n")
+        cache.write_text(picked + "\n", encoding="utf-8")
     except OSError:
         pass
     return picked
@@ -1709,7 +1709,7 @@ def opencode_session_cleanup(title: str, keep: int = 0) -> None:
     if stamp.is_file() and 0 <= time.time() - stamp.stat().st_mtime < ttl:
         return
     try:
-        stamp.write_text(str(int(time.time())))
+        stamp.write_text(str(int(time.time())), encoding="utf-8")
     except OSError:
         pass
     try:
@@ -1957,7 +1957,7 @@ def cmd_doit(args) -> int:
     if allow:
         print("doit: auto-allow enabled: rules that only ask are approved too; use --ask to review")
     if args.interactive:
-        command = opencode_command(["--prompt", prompt + "\n\n" + context.read_text()])
+        command = opencode_command(["--prompt", prompt + "\n\n" + context.read_text(encoding="utf-8")])
     else:
         run_args = ["run", "-m", model, "--title", "doit"]
         if allow:
@@ -1976,6 +1976,9 @@ def cmd_doit(args) -> int:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     argv = sys.argv[1:]
     if argv and argv[0] == ".":
         argv = ["build", *argv[1:]]
