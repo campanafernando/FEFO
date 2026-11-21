@@ -603,6 +603,9 @@ are generated in `.claude/agents/`; Cursor and Copilot receive pointers in
 ./bin/fefo mcp add ...         # add another MCP server
 ```
 
+On Windows, use `fefo` (the installed CLI) instead of `./bin/fefo`; `./bin/fefo`
+is the Unix entry point.
+
 {model_line(manifest)} FEFO does not hardcode a model in any agent; to pin one for
 this workspace set `provider.model` in `.fefo/workspace.json` and run `sync`.
 """
@@ -1413,6 +1416,7 @@ def cmd_build(args) -> int:
         print("FEFO: build agent produced no output; keeping the deterministic workspace", file=sys.stderr)
     else:
         print(answer)
+    opencode_session_cleanup("fefo-build", 1)
     manifest = load_manifest()
     sync_all(manifest)
     print("FEFO: build complete")
