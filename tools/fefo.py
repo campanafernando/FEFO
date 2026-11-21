@@ -47,6 +47,25 @@ GIT_DENIES = [
     "git -C * push --force*", "git -C * push -f *", "git -C * push * --force*", "git -C * push * -f *",
 ]
 
+# Browse is built into every workspace: an MCP server plus a Chromium extension
+# that lets agents use the real browser (tabs, logins, network captures).
+# The launcher resolves the binary explicitly because some distros ship
+# /bin/browse -> xdg-open; `browse` on PATH would silently open a GUI instead.
+BROWSE_LAUNCHER_PATH = ".opencode/bin/browse-mcp.sh"
+BROWSE_LAUNCHER = """#!/usr/bin/env bash
+# Browse MCP: real browser tabs, logins, network captures and recordings.
+# browse installs to $XDG_BIN_HOME (~/.local/bin) or the package manager's global
+# bin; resolve it explicitly because some distros ship /bin/browse -> xdg-open.
+set -euo pipefail
+
+for candidate in "${XDG_BIN_HOME:-$HOME/.local/bin}/browse" "$HOME/.bun/bin/browse"; do
+  [[ -x "$candidate" ]] && exec "$candidate" mcp
+done
+
+echo "browse not found. Install: curl -fsSL https://opencode.ai/browse/install | bash" >&2
+exit 1
+"""
+
 
 # ---------------------------------------------------------------------------
 # Files and manifest
@@ -644,6 +663,7 @@ def generate_opencode(manifest: dict) -> None:
             "type": "local",
             "command": ["codegraph", "serve", "--mcp", "--path", repo["path"]],
         }
+    servers["browse"] = {"type": "local", "command": ["bash", BROWSE_LAUNCHER_PATH]}
     for name, cfg in (manifest.get("mcp_servers") or {}).items():
         servers[name] = cfg
     references = {}
@@ -686,6 +706,7 @@ def claude_servers(manifest: dict) -> dict:
             "command": "codegraph",
             "args": ["serve", "--mcp", "--path", repo["path"]],
         }
+    servers["browse"] = {"type": "stdio", "command": "bash", "args": [BROWSE_LAUNCHER_PATH]}
     for name, cfg in (manifest.get("mcp_servers") or {}).items():
         if cfg.get("type") == "local":
             servers[name] = {
@@ -941,8 +962,8 @@ def generate_fefo_readme(manifest: dict) -> None:
 
 Generated from the manifest:
 
-- `opencode.json`, `.mcp.json`, `.claude/`, `.cursor/rules/fefo.mdc`,
-  `.github/copilot-instructions.md`, `CLAUDE.md`
+- `opencode.json`, `.mcp.json`, `.opencode/bin/browse-mcp.sh`, `.claude/`,
+  `.cursor/rules/fefo.mdc`, `.github/copilot-instructions.md`, `CLAUDE.md`
 - `AGENTS.md`, `docs/vault/`, `codegraph/README.md`
 
 Customize generated config without editing it by hand. FEFO deep-merges these
@@ -975,6 +996,7 @@ def sync_all(manifest: dict, check: bool = False) -> list[str]:
             write_text(ROOT / "AGENTS.local.md", generate_agents_local())
         write_text(ROOT / "AGENTS.md", generate_agents_md(manifest))
         generate_opencode(manifest)
+        write_text(ROOT / BROWSE_LAUNCHER_PATH, BROWSE_LAUNCHER)
         generate_vault(manifest)
         generate_codegraph_readme(manifest)
         generate_fefo_readme(manifest)
@@ -1399,6 +1421,7 @@ def cmd_mcp_remove(args) -> int:
 def cmd_mcp_list(args) -> int:
     manifest = load_manifest()
     servers = {r["mcp"]: {"type": "local", "command": ["codegraph", "serve", "--mcp", "--path", r["path"]]} for r in manifest["repos"]}
+    servers["browse"] = {"type": "local", "command": ["bash", BROWSE_LAUNCHER_PATH]}
     servers.update(manifest.get("mcp_servers") or {})
     for name, cfg in servers.items():
         if cfg.get("type") == "local":

@@ -48,6 +48,7 @@ Two caveats:
 Generated:
 
 - `.mcp.json` — local MCP servers, including one CodeGraph server per repository
+  and the built-in browse server
 - `.claude/agents/*.md` — wrappers that point to the canonical OpenCode agents
 - `.claude/skills/<id>` — symlinks to `.agents/skills/<id>`
 - `.claude/commands/*.md` — symlinks to `.opencode/commands/*.md`

@@ -75,6 +75,7 @@ The generated entry point is the `fefo` agent. From there:
 |---|---|
 | `.fefo/workspace.json` | Source of truth: repos, roles, stacks, MCP servers, model |
 | `opencode.json` | OpenCode model, agents, references, permissions, MCP gateway |
+| `.opencode/bin/browse-mcp.sh` | Built-in Browse launcher (real browser MCP) |
 | `.mcp.json` | Claude Code MCP configuration |
 | `.claude/` | Claude agents, skills, commands, settings |
 | `CLAUDE.md` | Claude entry point that imports `AGENTS.md` |
@@ -128,6 +129,13 @@ CodeGraph is the default. FEFO creates one local server per repository:
   }
 }
 ```
+
+Browse is built in for every workspace: it drives the real browser (tabs, logins,
+network captures) through an MCP server and a Chromium extension. FEFO generates
+`.opencode/bin/browse-mcp.sh`, which resolves the browse binary explicitly (some
+distros ship `/bin/browse` as a symlink to `xdg-open`). Install it once per
+machine with `curl -fsSL https://opencode.ai/browse/install | bash` and pair the
+extension; `browse status` reports the connection.
 
 Add another MCP without editing JSON:
 

@@ -61,7 +61,8 @@ paths relative to the workspace when possible, so the checkout can move.
 
 ```text
 manifest
-  ├── opencode.json       model, references, permissions, codegraph MCPs, custom MCPs
+  ├── opencode.json       model, references, permissions, codegraph + browse MCPs
+  ├── .opencode/bin/      browse MCP launcher
   ├── .mcp.json           Claude local MCPs
   ├── .claude/            agents, skills, commands, settings
   ├── CLAUDE.md           import of AGENTS.md

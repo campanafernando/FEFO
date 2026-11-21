@@ -76,7 +76,8 @@ class FefoTest(unittest.TestCase):
         self.assertEqual({r["name"]: r["stack"] for r in manifest["repos"]}, {"api": "django", "web": "next"})
 
         opencode = json.loads((self.workspace / "opencode.json").read_text())
-        self.assertEqual(set(opencode["mcp"]["servers"]), {"codegraph-api", "codegraph-web"})
+        self.assertEqual(set(opencode["mcp"]["servers"]), {"codegraph-api", "codegraph-web", "browse"})
+        self.assertEqual(opencode["mcp"]["servers"]["browse"]["command"], ["bash", ".opencode/bin/browse-mcp.sh"])
         self.assertEqual(opencode["default_agent"], "fefo")
         self.assertNotIn("model", opencode, "no model is pinned unless the manifest asks for one")
         self.assertEqual(set(opencode["experimental"]), {"todo"}, "2.3 removed the subagent depth key")
@@ -84,9 +85,11 @@ class FefoTest(unittest.TestCase):
         self.assertEqual(opencode["instructions"], ["AGENTS.md", "AGENTS.local.md"])
 
         claude = json.loads((self.workspace / ".mcp.json").read_text())
-        self.assertEqual(set(claude["mcpServers"]), {"codegraph-api", "codegraph-web"})
+        self.assertEqual(set(claude["mcpServers"]), {"codegraph-api", "codegraph-web", "browse"})
+        self.assertEqual(claude["mcpServers"]["browse"]["args"], [".opencode/bin/browse-mcp.sh"])
 
         self.assertTrue((self.workspace / ".claude/agents/fefo.md").is_file())
+        self.assertTrue((self.workspace / ".opencode/bin/browse-mcp.sh").is_file())
         self.assertTrue((self.workspace / ".claude/skills/codegraph").is_symlink())
         self.assertTrue((self.workspace / "CLAUDE.md").is_file())
         self.assertTrue((self.workspace / ".cursor/rules/fefo.mdc").is_file())
@@ -121,6 +124,7 @@ class FefoTest(unittest.TestCase):
         listing = self.run_fefo("mcp", "list")
         self.assertIn("docs", listing.stdout)
         self.assertIn("sentry", listing.stdout)
+        self.assertIn("browse", listing.stdout)
 
         remove = self.run_fefo("mcp", "remove", "docs")
         self.assertEqual(remove.returncode, 0, remove.stderr)
