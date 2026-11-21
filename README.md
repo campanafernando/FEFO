@@ -261,8 +261,9 @@ Agents never pin a model, so switching providers is a workspace-level decision.
 ## CLI
 
 ```sh
-./bin/fefo build               # adopt this directory and scan Git children
-./bin/fefo init                # same as build; explicit --repo also works
+./bin/fefo build                # adopt this directory + OpenCode enrichment
+./bin/fefo build --no-ai        # deterministic only
+./bin/fefo init                 # deterministic; explicit --repo also works
 ./bin/fefo add <path>           # add or update a repository
 ./bin/fefo remove <name>        # remove a repository
 ./bin/fefo sync                 # regenerate config and harness adapters
