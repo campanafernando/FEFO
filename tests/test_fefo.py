@@ -83,7 +83,7 @@ class FefoTest(unittest.TestCase):
         self.assertEqual(opencode["mcp"]["servers"]["browse"]["command"], ["bash", ".opencode/bin/browse-mcp.sh"])
         self.assertEqual(opencode["default_agent"], "fefo")
         self.assertNotIn("model", opencode, "no model is pinned unless the manifest asks for one")
-        self.assertEqual(set(opencode["experimental"]), {"todo"}, "2.3 removed the subagent depth key")
+        self.assertEqual(opencode["experimental"], {"todo": True, "subagent_depth": 2})
         self.assertEqual(set(opencode["references"]), {"api", "web"})
         self.assertEqual(opencode["instructions"], ["AGENTS.md", "AGENTS.local.md"])
 
@@ -342,9 +342,9 @@ class FefoTest(unittest.TestCase):
     def test_doctor_flags_removed_experimental_key(self) -> None:
         self.init_workspace()
         config = json.loads((self.workspace / "opencode.json").read_text())
-        config["experimental"]["subagent_depth"] = 2
+        config["experimental"]["background_compaction"] = True
         (self.workspace / "opencode.json").write_text(json.dumps(config))
-        self.assertIn("removed experimental keys: subagent_depth", self.run_fefo("doctor").stdout)
+        self.assertIn("removed experimental keys: background_compaction", self.run_fefo("doctor").stdout)
 
     def test_adapters_work_without_manifest(self) -> None:
         orchestrator = self.base / "orchestrator"

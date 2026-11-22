@@ -766,7 +766,8 @@ def generate_opencode(manifest: dict) -> None:
             {"action": "fefo", "resource": "*", "effect": "ask"},
         ],
         "watcher": {"ignore": ["**/.codegraph/**", "**/node_modules/**", "**/.venv/**", "**/venv/**", "**/__pycache__/**"]},
-        "experimental": {"todo": True},
+        # One nested level: primary -> orchestrator -> layer agent.
+        "experimental": {"subagent_depth": 2, "todo": True},
         "references": references,
         "mcp": {"timeout": {"startup": 90000}, "servers": servers},
     }
@@ -1121,7 +1122,7 @@ DEPRECATED_CONFIG_KEYS = {
 }
 
 # OpenCode 2.3 still loads these but they do nothing; doctor reports them.
-DEPRECATED_EXPERIMENTAL_KEYS = {"subagent_depth", "background_compaction"}
+DEPRECATED_EXPERIMENTAL_KEYS = {"background_compaction"}
 
 
 def opencode_version() -> tuple[int, ...] | None:

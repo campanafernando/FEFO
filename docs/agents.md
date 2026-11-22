@@ -69,8 +69,9 @@ cp .opencode/agents/specialist.md .opencode/agents/agriculture.md
 - Do not delegate the same scope to two agents.
 - At most four concurrent subagents per round.
 - Implement the glue in the primary agent, after every report is in.
-- Keep delegation to one level. OpenCode 2.3 removed the depth setting; the
-  ceiling is a convention in the agent instructions, not a config key.
+- Nested delegation is capped by `experimental.subagent_depth` (2 in generated
+  workspaces): the primary may spawn an orchestrator, which may spawn layer
+  agents. Do not go deeper.
 
 ## Background subagents (OpenCode 2.3+)
 
