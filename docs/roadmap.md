@@ -47,6 +47,22 @@
 - [ ] Plugin published to npm
 - [ ] FEFO template published as a GitHub template repository
 
+## v0.6 — OpenCode 2.4 adoption
+
+- [x] Per-repository CodeGraph opt-out (`codegraph: false`) for docs-only
+      orchestrators; no dead MCP server, no false doctor warning
+- [x] Workspace browse-MCP opt-out (`browse: false`) for desktop-only
+      workspaces, plus a doctor check for the browse binary
+- [x] Document the built-in desktop browser, automations, image/video tools, the
+      new TUI look, and Windows taskbar status
+- [x] Verify the child orchestrators and the installer, zsh, and plugin
+      repositories against OpenCode 2.4.0
+- [ ] Optional `/fefo-automation` command that creates the read-only `doctor` and
+      `sync --check` automations
+- [ ] Pin guidance for plugins that now auto-update by version range
+- [ ] Decide the default `external_directory` policy (2.4 allows outside-project
+      access by default)
+
 ## Deferred
 
 - Remote MCP credential synchronization across harnesses

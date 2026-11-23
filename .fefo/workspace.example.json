@@ -5,6 +5,7 @@
     "model": null
   },
   "harnesses": ["opencode", "claude", "cursor", "copilot"],
+  "browse": true,
   "repos": [
     {
       "name": "api",
@@ -12,6 +13,7 @@
       "role": "api",
       "stack": "django",
       "mcp": "codegraph-api",
+      "codegraph": true,
       "commands": {
         "test": "python manage.py test",
         "lint": "ruff check .",
@@ -24,6 +26,7 @@
       "role": "web",
       "stack": "next",
       "mcp": "codegraph-web",
+      "codegraph": true,
       "commands": {
         "test": "npm run test",
         "lint": "npm run lint",

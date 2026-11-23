@@ -77,6 +77,8 @@ class FefoTest(unittest.TestCase):
         self.assertEqual(manifest["name"], "Test Workspace")
         self.assertEqual({r["name"]: r["role"] for r in manifest["repos"]}, {"api": "api", "web": "web"})
         self.assertEqual({r["name"]: r["stack"] for r in manifest["repos"]}, {"api": "django", "web": "next"})
+        self.assertNotIn("browse", manifest, "opt-outs are only recorded when used")
+        self.assertFalse(any("codegraph" in repo for repo in manifest["repos"]))
 
         opencode = json.loads((self.workspace / "opencode.json").read_text())
         self.assertEqual(set(opencode["mcp"]["servers"]), {"codegraph-api", "codegraph-web", "browse"})
@@ -263,6 +265,74 @@ class FefoTest(unittest.TestCase):
         opencode = json.loads((self.workspace / "opencode.json").read_text())
         self.assertNotIn("codegraph-web", opencode["mcp"]["servers"])
 
+    def test_repository_codegraph_opt_out(self) -> None:
+        self.init_workspace()
+        added = self.run_fefo("add", "../web", "--no-codegraph")
+        self.assertEqual(added.returncode, 0, added.stderr)
+        manifest = json.loads((self.workspace / ".fefo/workspace.json").read_text())
+        repos = {repo["name"]: repo for repo in manifest["repos"]}
+        self.assertIs(repos["web"]["codegraph"], False)
+        self.assertNotIn("codegraph", repos["api"], "enabled repos keep the default, without an explicit true")
+
+        self.assertEqual(self.run_fefo("sync").returncode, 0)
+        opencode = json.loads((self.workspace / "opencode.json").read_text())
+        self.assertEqual(set(opencode["mcp"]["servers"]), {"codegraph-api", "browse"})
+        claude = json.loads((self.workspace / ".mcp.json").read_text())
+        self.assertEqual(set(claude["mcpServers"]), {"codegraph-api", "browse"})
+
+        agents = (self.workspace / "AGENTS.md").read_text()
+        row = next(line for line in agents.splitlines() if line.startswith("| `web` |"))
+        self.assertIn("`—`", row)
+        self.assertNotIn("codegraph-web", row)
+
+        listing = self.run_fefo("mcp", "list")
+        self.assertNotIn("codegraph-web", listing.stdout)
+        self.assertIn("codegraph-api", listing.stdout)
+
+        codegraph_readme = (self.workspace / "codegraph/README.md").read_text()
+        self.assertIn("CodeGraph disabled for: `web`", codegraph_readme)
+        self.assertNotIn("codegraph-web", codegraph_readme)
+
+        skipped = self.run_fefo("index", "web")
+        self.assertEqual(skipped.returncode, 0, skipped.stderr)
+        self.assertIn("CodeGraph disabled for web; skipped", skipped.stdout)
+        self.assertFalse((self.base / "web/.codegraph").exists())
+
+        status = self.run_fefo("status")
+        web_row = next(line for line in status.stdout.splitlines() if line.startswith("web"))
+        self.assertIn("disabled", web_row)
+
+        doctor = self.run_fefo("doctor")
+        self.assertEqual(doctor.returncode, 0, doctor.stdout + doctor.stderr)
+        self.assertIn("CodeGraph disabled: web", doctor.stdout)
+        self.assertNotIn("CodeGraph index missing: web", doctor.stdout)
+
+    def test_init_no_browse(self) -> None:
+        self.init_workspace("--no-browse")
+        manifest = json.loads((self.workspace / ".fefo/workspace.json").read_text())
+        self.assertIs(manifest["browse"], False)
+        opencode = json.loads((self.workspace / "opencode.json").read_text())
+        self.assertNotIn("browse", opencode["mcp"]["servers"])
+        claude = json.loads((self.workspace / ".mcp.json").read_text())
+        self.assertNotIn("browse", claude["mcpServers"])
+        listing = self.run_fefo("mcp", "list")
+        self.assertNotIn("browse", {line.split("\t")[0] for line in listing.stdout.splitlines()})
+        launcher = self.workspace / ".opencode/bin/browse-mcp.sh"
+        self.assertFalse(launcher.exists())
+        doctor = self.run_fefo("doctor")
+        self.assertEqual(doctor.returncode, 0, doctor.stdout + doctor.stderr)
+        self.assertIn("browse MCP disabled", doctor.stdout)
+
+        path = self.workspace / ".fefo/workspace.json"
+        manifest["browse"] = True
+        path.write_text(json.dumps(manifest))
+        self.assertEqual(self.run_fefo("sync").returncode, 0)
+        self.assertTrue(launcher.is_file())
+        manifest["browse"] = False
+        path.write_text(json.dumps(manifest))
+        self.assertEqual(self.run_fefo("sync").returncode, 0)
+        self.assertFalse(launcher.exists())
+
     def init_workspace(self, *extra: str) -> None:
         result = self.run_fefo("init", "--name", "Test", "--repo", "../api", "--no-index", "--yes", *extra)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -385,6 +455,19 @@ class HelpersTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "package.json").write_text(json.dumps({"dependencies": {"@nestjs/core": "11"}}))
             self.assertEqual(fefo.detect_stack(Path(tmp)), "nest")
+
+    def test_manifest_rejects_non_boolean_browse(self) -> None:
+        with self.assertRaises(SystemExit) as error:
+            fefo.validate_manifest({"fefo": 1, "name": "Test", "browse": "yes"})
+        self.assertIn("'browse' must be a boolean", str(error.exception))
+
+    def test_manifest_rejects_non_boolean_repo_codegraph(self) -> None:
+        with self.assertRaises(SystemExit) as error:
+            fefo.validate_manifest({
+                "fefo": 1, "name": "Test",
+                "repos": [{"name": "api", "path": "../api", "role": "api", "stack": "django", "codegraph": 0}],
+            })
+        self.assertIn("'codegraph' must be a boolean", str(error.exception))
 
 
 if __name__ == "__main__":

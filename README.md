@@ -50,10 +50,10 @@ curl -fsSL https://raw.githubusercontent.com/campanafernando/fefo-install/main/i
 irm https://raw.githubusercontent.com/campanafernando/fefo-install/main/install.ps1 | iex
 ```
 
-Requirements: Git, Python 3.10+, OpenCode 2.3.0+, and the CodeGraph CLI on
-`PATH` for indexing (optional but recommended). The installer is per-user, needs
-no `sudo`, and downloads this repository to `~/.local/share/fefo`
-(`%LOCALAPPDATA%\fefo` on Windows).
+Requirements: Git, Python 3.10+, OpenCode 2.3.0+ (2.4.0 recommended), and the
+CodeGraph CLI on `PATH` for indexing (optional but recommended). The installer is
+per-user, needs no `sudo`, and downloads this repository to
+`~/.local/share/fefo` (`%LOCALAPPDATA%\fefo` on Windows).
 
 ## Build a workspace
 
@@ -121,7 +121,7 @@ existing setup changes.
 |---|---|
 | `.fefo/workspace.json` | Source of truth: repos, roles, stacks, MCP servers, model |
 | `opencode.json` | OpenCode model, agents, references, permissions, MCP gateway |
-| `.opencode/bin/browse-mcp.sh` | Built-in Browse launcher (real browser MCP) |
+| `.opencode/bin/browse-mcp.sh` | Browse launcher (real browser MCP; omitted when `browse: false`) |
 | `.mcp.json` | Claude Code MCP configuration |
 | `.claude/` | Claude agents, skills, commands, settings |
 | `CLAUDE.md` | Claude entry point that imports `AGENTS.md` |
@@ -176,12 +176,19 @@ CodeGraph is the default. FEFO creates one local server per repository:
 }
 ```
 
-Browse is built in for every workspace: it drives the real browser (tabs, logins,
-network captures) through an MCP server and a Chromium extension. FEFO generates
+Browse is generated for every workspace unless `"browse": false` in
+`.fefo/workspace.json`: it drives the real browser (tabs, logins, network
+captures) through an MCP server and a Chromium extension. FEFO generates
 `.opencode/bin/browse-mcp.sh`, which resolves the browse binary explicitly (some
 distros ship `/bin/browse` as a symlink to `xdg-open`). Install it once per
 machine with `curl -fsSL https://opencode.ai/browse/install | bash` and pair the
 extension; `browse status` reports the connection.
+
+OpenCode 2.4 also provides a built-in browser in the desktop app. It keeps a
+persistent profile, imports sign-ins and history, and exposes the `browser` Code
+Mode namespace. Use the built-in browser for desktop work and set
+`"browse": false` when the external browse MCP is redundant; keep it for the
+TUI, CLI, and unattended automations.
 
 Add another MCP without editing JSON:
 
@@ -236,6 +243,26 @@ OpenCode is canonical. FEFO derives the rest:
 See [`docs/harnesses.md`](docs/harnesses.md) for the adapter contract and
 limitations.
 
+## OpenCode 2.4
+
+OpenCode 2.4 is supported and recommended. FEFO keeps the generated files
+compatible with 2.3 and documents the 2.4 features instead of pinning them:
+
+- **Browser:** the desktop app's built-in browser and the generated browse MCP
+  are alternatives. Choose per workspace with `browse: false`.
+- **Automations:** enabled by OpenCode by default. Use them for read-only checks
+  such as `fefo doctor` and `fefo sync --check`; turn them off with
+  `"opencode": { "automations": false }` in `.fefo/workspace.json`.
+- **Media:** `generate_image` and `generate_video` appear when the connected
+  provider has the model; set defaults through the manifest's `opencode` block.
+- **TUI:** the new look is the default. `opencode-classic` restores the previous
+  theme; terminal settings live in the global `cli.json`, not in the workspace.
+- **Windows:** the taskbar shows session progress and flashes on a pending
+  permission or question; no project configuration is needed.
+
+See [`docs/harnesses.md`](docs/harnesses.md#opencode-24) for the upgrade notes
+(plugin auto-update, MCP protocol fallback, image tool rename, Copilot token).
+
 ## Provider recommendation
 
 FEFO does not require a provider and, by default, pins no model: the workspace
@@ -272,6 +299,8 @@ the plugin and the zsh layer delegate to that same CLI.
 ./bin/fefo build --no-ai        # deterministic only
 ./bin/fefo init                 # deterministic; explicit --repo also works
 ./bin/fefo add <path>           # add or update a repository
+./bin/fefo add <path> --no-codegraph  # docs-only repo: no index or MCP server
+./bin/fefo init --no-browse     # omit the external browse MCP (desktop browser)
 ./bin/fefo remove <name>        # remove a repository
 ./bin/fefo sync                 # regenerate config and harness adapters
 ./bin/fefo sync --check         # report generated files that are out of date
@@ -297,6 +326,9 @@ Run `./bin/fefo <command> --help` for flags.
 5. **Modular agents, inherited model.**
 6. **No silent destructive actions.** Git history changes require authorization.
 7. **Generated files are disposable; local instructions are not.**
+8. **Compatible defaults, explicit opt-outs.** New harness features are
+   documented, not silently enabled or disabled; a workspace chooses its browser,
+   automation, and indexing posture in the manifest.
 
 ## Roadmap
 
