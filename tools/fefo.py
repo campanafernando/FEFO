@@ -26,7 +26,7 @@ TEMPLATE = Path(__file__).resolve().parents[1]
 ROOT = Path(os.environ.get("FEFO_ROOT", TEMPLATE)).resolve()
 MANIFEST_PATH = ROOT / ".fefo" / "workspace.json"
 RECOMMENDED_MODEL = "opencode-go/deepseek-v4.1-flash"
-MIN_OPENCODE = (2, 4, 0)
+MIN_OPENCODE = (2, 4, 1)
 UPDATE_URL = os.environ.get("FEFO_UPDATE_URL", "https://opencode.ai/update/api/latest/cli/npm")
 UPDATE_TTL = int(os.environ.get("FEFO_UPDATE_TTL", "86400") or "86400")
 HARNESSES = ("opencode", "claude", "cursor", "copilot")
@@ -524,7 +524,7 @@ def command_rows(manifest: dict) -> str:
 
 
 DELEGATION_RULES = """\
-Subagents run in the background (OpenCode 2.4+): the `subagent` tool returns
+Subagents run in the background (OpenCode 2.4.1+): the `subagent` tool returns
 immediately and the parent receives a report each time a child goes idle.
 
 1. Map scopes first; one owner per file set; at most four concurrent subagents.

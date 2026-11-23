@@ -5,16 +5,18 @@ Do not use this file as a task tracker.
 
 ## 2026-11-23 — Adopt OpenCode 2.4 in the whitelabel generator
 
-Context: OpenCode 2.4.0 added a built-in desktop browser, automations, image and
+Context: OpenCode 2.4 added a built-in desktop browser, automations, image and
 video generation, a new TUI look, and Windows taskbar status. The generated
 config still assumed the pre-2.4 browse MCP and indexed every federated
 repository, including documentation-only orchestrators.
 
 Decision:
 
-- Require OpenCode 2.4.0+ and the latest published CLI. The installer and
+- Require OpenCode 2.4.1+ and the latest published CLI. The installer and
   mutating `fefo` commands stop when a newer version is available;
   `FEFO_SKIP_UPDATE_CHECK=1` is limited to CI/offline use.
+- Patch releases bump the floor and refresh the cached latest manually until the
+  automatic updater ships; 2.4.1 is the current floor.
 - Document 2.4 as the floor, not a feature tour: the docs point to the OpenCode
   release notes and enforce the version instead of repeating the changelog.
 - Make CodeGraph opt-out per repository (`"codegraph": false`). A docs-only

@@ -503,7 +503,7 @@ class HelpersTest(unittest.TestCase):
             self.assertEqual(fefo.detect_stack(Path(tmp)), "nest")
 
     def test_version_tuple(self) -> None:
-        self.assertEqual(fefo.version_tuple("v2.4.0"), (2, 4, 0))
+        self.assertEqual(fefo.version_tuple("v2.4.1"), (2, 4, 1))
         self.assertEqual(fefo.version_tuple("2.5.0-beta.1"), (2, 5, 0))
         self.assertEqual(fefo.version_tuple((2, 4, 0)), (2, 4, 0))
 

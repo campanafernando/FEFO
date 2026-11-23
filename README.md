@@ -26,7 +26,7 @@ version. The same rule applies to the tools FEFO launches: CodeGraph, the
 browser MCP, and the plugin. `FEFO_SKIP_UPDATE_CHECK=1` bypasses the check only
 for CI or offline use.
 
-Requirements: Git, Python 3.10+, OpenCode 2.4.0+ (latest). CodeGraph is optional
+Requirements: Git, Python 3.10+, OpenCode 2.4.1+ (latest). CodeGraph is optional
 for indexing; the browser MCP is optional for desktop work.
 
 ## Install
@@ -202,6 +202,8 @@ version policy.
 
 ## Version policy
 
+- **Floor:** OpenCode 2.4.1+. Patch releases bump the floor and refresh the
+  cache; the runtime check still follows the published latest.
 - **Source of truth:** `https://opencode.ai/update/api/latest/cli/npm`.
 - **Checked locally:** the installer, `fefo doctor`, and every mutating command.
   Read-only commands warn; writes and model turns stop until `opencode upgrade`

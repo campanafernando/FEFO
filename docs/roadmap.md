@@ -23,7 +23,7 @@
       the zsh helpers (cached latest-version check, CI/offline bypass).
 - [x] Document the 2.4 browser, automations, media, TUI and upgrade notes.
 - [x] Verify the child orchestrators and the installer, zsh, and plugin
-      repositories against OpenCode 2.4.0.
+      repositories against OpenCode 2.4.1.
 - [ ] Automatic OpenCode update process (scheduled, with the same gate).
 - [ ] Optional `/fefo-automation` command for the read-only `doctor` and
       `sync --check` recipes.

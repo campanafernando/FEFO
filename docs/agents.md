@@ -66,7 +66,7 @@ body to the domain, and add it to the routing table in `AGENTS.md` or
 - Nested delegation is capped by `experimental.subagent_depth` (2 in generated
   workspaces): primary → orchestrator → layer agent.
 
-## Background subagents (OpenCode 2.4+)
+## Background subagents (OpenCode 2.4.1+)
 
 The `subagent` tool returns immediately; the child runs in its own session and
 the parent receives a report when it goes idle. Launch independent subagents in

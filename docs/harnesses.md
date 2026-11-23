@@ -5,8 +5,10 @@ other harnesses. Never edit a generated adapter by hand; run `./bin/fefo sync`.
 
 ## Version policy
 
-FEFO follows the latest OpenCode CLI. The installer, `fefo doctor`, and every
-mutating command check `https://opencode.ai/update/api/latest/cli/npm`:
+Current floor: **OpenCode 2.4.1+**. Patch releases bump the floor and refresh
+the cache; the runtime check still follows the published latest. The installer,
+`fefo doctor`, and every mutating command check
+`https://opencode.ai/update/api/latest/cli/npm`:
 
 - read-only commands (`status`, `sync --check`, `adapters --check`, `mcp list`)
   warn when an update is pending;
@@ -33,7 +35,7 @@ Reads natively:
 
 The generated `fefo` agent is the primary entry point. No model is pinned unless
 the manifest sets `provider.model`; `opencode-go/deepseek-v4.1-flash` is the
-recommendation, but any provider/model can be used. OpenCode 2.4+ is required:
+recommendation, but any provider/model can be used. OpenCode 2.4.1+ is required:
 subagents always run in the background.
 
 ### Workspace boundary
@@ -61,8 +63,12 @@ Two caveats:
 - Run OpenCode at the father root when a task spans repositories. The `references`
   entry gives the agent the path without changing the session directory.
 
-### OpenCode 2.4 notes
+### OpenCode 2.4.x notes
 
+- **2.4.1:** fixes assistant-message saving on macOS 12's system SQLite;
+  config-only providers such as Ollama show models in `/models` without a
+  `/connect` login; `/btw` tabs show an unread dot. No FEFO configuration change;
+  the version gate adopts it.
 - **Browser:** the desktop app's built-in `browser` namespace and the generated
   browse MCP are alternatives. Keep browse for the TUI/CLI/Claude; set
   `"browse": false` for a desktop-only workspace.
