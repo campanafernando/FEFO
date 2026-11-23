@@ -7,13 +7,16 @@ Do not use this file as a task tracker.
 
 Context: OpenCode 2.4.0 added a built-in desktop browser, automations, image and
 video generation, a new TUI look, and Windows taskbar status. The generated
-config still assumed the 2.3-era browse MCP and indexed every federated
+config still assumed the pre-2.4 browse MCP and indexed every federated
 repository, including documentation-only orchestrators.
 
 Decision:
 
-- Keep OpenCode 2.3.0 as the minimum because background subagents are the
-  contract; document 2.4.0 as the recommended version.
+- Require OpenCode 2.4.0+ and the latest published CLI. The installer and
+  mutating `fefo` commands stop when a newer version is available;
+  `FEFO_SKIP_UPDATE_CHECK=1` is limited to CI/offline use.
+- Document 2.4 as the floor, not a feature tour: the docs point to the OpenCode
+  release notes and enforce the version instead of repeating the changelog.
 - Make CodeGraph opt-out per repository (`"codegraph": false`). A docs-only
   orchestrator should not spawn an index-less MCP server or produce a false
   doctor warning; its nested application repositories are indexed individually.

@@ -27,31 +27,19 @@ workspace/
 
 `.fefo/workspace.json` is the only input the generator needs:
 
-```json
+```jsonc
 {
   "fefo": 1,
   "name": "My Workspace",
   "provider": { "model": null },
   "harnesses": ["opencode", "claude", "cursor", "copilot"],
-  "plugins": [],
-  "opencode": {},
-  "claude_settings": {},
   "browse": true,
   "repos": [
-    {
-      "name": "api",
-      "path": "../api",
-      "role": "api",
-      "stack": "django",
+    { "name": "api", "path": "../api", "role": "api", "stack": "django",
       "mcp": "codegraph-api",
-      "commands": {
-        "test": "python manage.py test",
-        "lint": "ruff check .",
-        "build": "python manage.py check"
-      }
-    }
+      "commands": { "test": "pytest", "lint": "ruff check ." } }
   ],
-  "mcp_servers": {}
+  "plugins": [], "opencode": {}, "claude_settings": {}, "mcp_servers": {}
 }
 ```
 
@@ -62,7 +50,7 @@ Two opt-outs keep the federation honest. `"browse": false` removes the external
 browse MCP server and its launcher, for a workspace that uses the OpenCode 2.4
 desktop app's built-in browser. `"codegraph": false` on a repository entry skips
 that repository's index and MCP server, for docs-only orchestrators that hold no
-application code. Missing means enabled, so existing manifests keep working.
+application code. Missing means enabled.
 
 ## Generation
 
@@ -80,9 +68,6 @@ manifest
   └── codegraph/          index guidance
 ```
 
-The `browse` and per-repository `codegraph` opt-outs are applied here: disabled
-servers and launchers are omitted, not written and then ignored.
-
 `fefo sync` is idempotent. It writes a file only when the content changes, so a
 no-op sync leaves the tree untouched; `fefo sync --check` lists what would change
 and writes nothing. Extra settings belong in the manifest (`plugins`, `opencode`,
@@ -96,18 +81,18 @@ it copies `bin/`, `tools/`, `.opencode/agents`, `.opencode/commands` and
 that are Git roots, and then runs the normal generation. `fefo init` is the same
 command without the OpenCode phase; `fefo .` is shorthand for `build`.
 
-After the deterministic generation, `build` calls the user's OpenCode with a
-model picked like `doit` and a prompt derived from FEFO's rules. The agent may
+After the deterministic generation, `build` calls the user's latest OpenCode with
+a model picked like `doit` and a prompt derived from FEFO's rules. The agent may
 adjust `.fefo/workspace.json`, `AGENTS.local.md` and `docs/vault/repos/*.md`; it
 must not edit generated files or run Git. The CLI re-syncs afterwards.
 
-The separate `fefo-install` repository only downloads the template and links the
-CLI. FEFO stays the workspace reference and the source of the agents, skills and
-generator.
+The FEFO source checkout carries `.fefo/template`: it keeps its bootstrap docs
+and is not treated as a generated workspace. `fefo-install` only downloads the
+template and links the CLI.
 
 ## CodeGraph
 
-Each repository gets its own MCP server:
+Each indexed repository gets its own MCP server:
 
 ```jsonc
 {
@@ -120,14 +105,14 @@ Each repository gets its own MCP server:
 
 This is deliberate. A single index over unrelated repositories produces
 ambiguous symbols and wrong call edges. FEFO federates at the routing layer, not
-inside the index. Set `"codegraph": false` on a docs-only orchestrator: its
-nested application repositories are indexed individually, and an index over the
-orchestrator itself would be ambiguous and slow to start.
+inside the index. A docs-only orchestrator should set `"codegraph": false`; its
+nested application repositories are indexed individually.
 
 `fefo index`:
 
 - creates `.codegraph/` with `codegraph init --index` when missing;
 - runs `codegraph sync` when the database already exists;
+- skips repositories with `"codegraph": false`;
 - never copies an index between repositories.
 
 ## Harness adapters

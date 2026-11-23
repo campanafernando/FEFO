@@ -23,6 +23,8 @@ class FefoTest(unittest.TestCase):
         self.base = Path(self.tmp.name)
         self.workspace = self.base / "workspace"
         self.workspace.mkdir()
+        self._update_env = os.environ.get("FEFO_SKIP_UPDATE_CHECK")
+        os.environ["FEFO_SKIP_UPDATE_CHECK"] = "1"
         shutil.copytree(REPO / "bin", self.workspace / "bin")
         shutil.copytree(REPO / "tools", self.workspace / "tools")
         shutil.copytree(REPO / ".opencode", self.workspace / ".opencode")
@@ -34,6 +36,10 @@ class FefoTest(unittest.TestCase):
         self.make_repo("web", "next")
 
     def tearDown(self) -> None:
+        if self._update_env is None:
+            os.environ.pop("FEFO_SKIP_UPDATE_CHECK", None)
+        else:
+            os.environ["FEFO_SKIP_UPDATE_CHECK"] = self._update_env
         self.tmp.cleanup()
 
     def make_repo(self, name: str, stack: str) -> Path:
@@ -56,6 +62,19 @@ class FefoTest(unittest.TestCase):
     def run_fefo(self, *args: str) -> subprocess.CompletedProcess:
         env = os.environ.copy()
         env.pop("FEFO_ROOT", None)
+        return subprocess.run(
+            [str(self.workspace / "bin" / "fefo"), *args],
+            cwd=self.workspace,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=30,
+        )
+
+    def run_fefo_with(self, env_extra: dict, *args: str) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        env.pop("FEFO_ROOT", None)
+        env.update(env_extra)
         return subprocess.run(
             [str(self.workspace / "bin" / "fefo"), *args],
             cwd=self.workspace,
@@ -333,6 +352,33 @@ class FefoTest(unittest.TestCase):
         self.assertEqual(self.run_fefo("sync").returncode, 0)
         self.assertFalse(launcher.exists())
 
+    def test_update_gate_blocks_stale_opencode(self) -> None:
+        self.init_workspace()
+        latest = self.base / "latest.json"
+        latest.write_text('{"version": "99.0.0"}\n')
+        env = {
+            "FEFO_SKIP_UPDATE_CHECK": "0",
+            "FEFO_UPDATE_URL": latest.as_uri(),
+            "XDG_CACHE_HOME": str(self.base / "cache"),
+        }
+        blocked = self.run_fefo_with(env, "sync")
+        self.assertEqual(blocked.returncode, 1)
+        self.assertIn("older than the latest 99.0.0", blocked.stderr)
+        allowed = self.run_fefo_with(env, "status")
+        self.assertEqual(allowed.returncode, 0)
+        self.assertIn("WARN", allowed.stdout)
+
+    def test_template_sentinel_keeps_bootstrap_docs(self) -> None:
+        self.init_workspace()
+        agents = (self.workspace / "AGENTS.md").read_text()
+        codegraph = (self.workspace / "codegraph/README.md").read_text()
+        index = (self.workspace / "docs/vault/00-INDEX.md").read_text()
+        (self.workspace / ".fefo/template").write_text("template\n")
+        self.assertEqual(self.run_fefo("sync").returncode, 0)
+        self.assertEqual(agents, (self.workspace / "AGENTS.md").read_text())
+        self.assertEqual(codegraph, (self.workspace / "codegraph/README.md").read_text())
+        self.assertEqual(index, (self.workspace / "docs/vault/00-INDEX.md").read_text())
+
     def init_workspace(self, *extra: str) -> None:
         result = self.run_fefo("init", "--name", "Test", "--repo", "../api", "--no-index", "--yes", *extra)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -455,6 +501,11 @@ class HelpersTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "package.json").write_text(json.dumps({"dependencies": {"@nestjs/core": "11"}}))
             self.assertEqual(fefo.detect_stack(Path(tmp)), "nest")
+
+    def test_version_tuple(self) -> None:
+        self.assertEqual(fefo.version_tuple("v2.4.0"), (2, 4, 0))
+        self.assertEqual(fefo.version_tuple("2.5.0-beta.1"), (2, 5, 0))
+        self.assertEqual(fefo.version_tuple((2, 4, 0)), (2, 4, 0))
 
     def test_manifest_rejects_non_boolean_browse(self) -> None:
         with self.assertRaises(SystemExit) as error:

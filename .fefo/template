@@ -1,0 +1,6 @@
+# FEFO source template
+#
+# This checkout is the generator and reference, not a generated workspace.
+# `fefo sync` keeps the bootstrap docs (AGENTS.md, codegraph/README.md and
+# docs/vault/00-INDEX.md) intact here. A workspace created by `fefo build`
+# does not contain this file and gets the generated versions.

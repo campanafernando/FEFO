@@ -18,6 +18,7 @@ import sys
 import tempfile
 import textwrap
 import time
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,7 +26,9 @@ TEMPLATE = Path(__file__).resolve().parents[1]
 ROOT = Path(os.environ.get("FEFO_ROOT", TEMPLATE)).resolve()
 MANIFEST_PATH = ROOT / ".fefo" / "workspace.json"
 RECOMMENDED_MODEL = "opencode-go/deepseek-v4.1-flash"
-MIN_OPENCODE = (2, 3, 0)
+MIN_OPENCODE = (2, 4, 0)
+UPDATE_URL = os.environ.get("FEFO_UPDATE_URL", "https://opencode.ai/update/api/latest/cli/npm")
+UPDATE_TTL = int(os.environ.get("FEFO_UPDATE_TTL", "86400") or "86400")
 HARNESSES = ("opencode", "claude", "cursor", "copilot")
 ROLES = (
     "orchestrator", "api", "web", "mobile", "data", "infra", "legacy",
@@ -303,6 +306,11 @@ def browse_enabled(manifest: dict) -> bool:
     return manifest.get("browse", True) is not False
 
 
+def is_template_checkout() -> bool:
+    """The source template keeps its bootstrap docs; a generated workspace does not."""
+    return (ROOT / ".fefo" / "template").is_file()
+
+
 def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
@@ -516,7 +524,7 @@ def command_rows(manifest: dict) -> str:
 
 
 DELEGATION_RULES = """\
-Subagents run in the background (OpenCode 2.3+): the `subagent` tool returns
+Subagents run in the background (OpenCode 2.4+): the `subagent` tool returns
 immediately and the parent receives a report each time a child goes idle.
 
 1. Map scopes first; one owner per file set; at most four concurrent subagents.
@@ -717,7 +725,8 @@ def generate_vault(manifest: dict) -> None:
              "- [Repository notes](repos/)", ""]
     for repo in manifest["repos"]:
         index.append(f"- [{repo['name']}](repos/{slugify(repo['name'])}.md) — {repo['role']} / {repo['stack']}")
-    write_text(vault / "00-INDEX.md", "\n".join(index) + "\n")
+    if not is_template_checkout():
+        write_text(vault / "00-INDEX.md", "\n".join(index) + "\n")
     write_text(vault / "federation.md", generate_federation_md(manifest))
     if not (vault / "decisions.md").is_file():
         write_text(vault / "decisions.md", """# Decisions
@@ -1125,14 +1134,16 @@ def sync_all(manifest: dict, check: bool = False) -> list[str]:
     try:
         if not (ROOT / "AGENTS.local.md").exists():
             write_text(ROOT / "AGENTS.local.md", generate_agents_local())
-        write_text(ROOT / "AGENTS.md", generate_agents_md(manifest))
+        if not is_template_checkout():
+            write_text(ROOT / "AGENTS.md", generate_agents_md(manifest))
         generate_opencode(manifest)
         if browse_enabled(manifest):
             write_text(ROOT / BROWSE_LAUNCHER_PATH, BROWSE_LAUNCHER)
         elif (ROOT / BROWSE_LAUNCHER_PATH).exists():
             remove(ROOT / BROWSE_LAUNCHER_PATH)
         generate_vault(manifest)
-        generate_codegraph_readme(manifest)
+        if not is_template_checkout():
+            generate_codegraph_readme(manifest)
         generate_fefo_readme(manifest)
         if "claude" in manifest.get("harnesses", []):
             generate_claude(manifest)
@@ -1173,7 +1184,7 @@ DEPRECATED_CONFIG_KEYS = {
     "autoshare", "logLevel", "server", "disabled_providers", "enabled_providers",
 }
 
-# OpenCode 2.3 still loads these but they do nothing; doctor reports them.
+# OpenCode 2.4 still loads these but they do nothing; doctor reports them.
 DEPRECATED_EXPERIMENTAL_KEYS = {"background_compaction"}
 
 
@@ -1187,6 +1198,91 @@ def opencode_version() -> tuple[int, ...] | None:
         return None
     match = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
     return tuple(int(part) for part in match.groups()) if match else None
+
+
+def version_tuple(value) -> tuple[int, ...]:
+    if isinstance(value, tuple):
+        return value
+    text = str(value).strip().lstrip("v").split("-")[0]
+    parts = []
+    for part in text.split("."):
+        match = re.match(r"(\d+)", part)
+        if not match:
+            break
+        parts.append(int(match.group(1)))
+    return tuple(parts)
+
+
+def latest_opencode_version() -> str | None:
+    """Latest published CLI version, cached; None when offline and uncached."""
+    cache = opencode_cache_dir() / "latest-opencode.json"
+    cached = None
+    if cache.is_file():
+        try:
+            data = read_json(cache)
+            cached = str(data.get("version") or "") or None
+            if cached and time.time() - float(data.get("checked") or 0) < UPDATE_TTL:
+                return cached
+        except Exception:
+            cached = None
+    try:
+        request = urllib.request.Request(UPDATE_URL, headers={"User-Agent": "fefo"})
+        with urllib.request.urlopen(request, timeout=2) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        version = str(data.get("version") or "").strip().lstrip("v")
+    except Exception:
+        return cached
+    if version:
+        try:
+            cache.write_text(json.dumps({"version": version, "checked": time.time()}), encoding="utf-8")
+        except OSError:
+            pass
+        return version
+    return cached
+
+
+def enforce_latest_opencode(write: bool) -> bool:
+    if os.environ.get("FEFO_SKIP_UPDATE_CHECK") == "1":
+        return True
+    if not opencode_bin():
+        message = "opencode not found. Install the latest OpenCode: https://opencode.ai"
+        if write:
+            print(f"FEFO: {message}", file=sys.stderr)
+            return False
+        print(f"WARN  {message}")
+        return True
+    installed = opencode_version()
+    if installed is None:
+        print("WARN  could not determine the OpenCode version; run `opencode upgrade` if needed")
+        return True
+    latest = latest_opencode_version()
+    if latest is None:
+        print("WARN  could not check for OpenCode updates; continuing")
+        return True
+    if installed < version_tuple(latest):
+        current = ".".join(map(str, installed))
+        message = f"OpenCode {current} is older than the latest {latest}. Run `opencode upgrade`, then retry."
+        if write:
+            print(f"FEFO: {message}", file=sys.stderr)
+            print("FEFO: set FEFO_SKIP_UPDATE_CHECK=1 only for CI or offline use.", file=sys.stderr)
+            return False
+        print(f"WARN  {message}")
+    return True
+
+
+def update_gate(args) -> bool:
+    command = args.command
+    if command == "doctor":
+        return True
+    if command == "status":
+        return enforce_latest_opencode(write=False)
+    if command == "mcp":
+        return enforce_latest_opencode(write=args.mcp_command in {"add", "remove"})
+    if command == "sync":
+        return enforce_latest_opencode(write=not args.check)
+    if command == "adapters":
+        return enforce_latest_opencode(write=not args.check)
+    return enforce_latest_opencode(write=True)
 
 
 def doctor(manifest: dict) -> int:
@@ -1239,13 +1335,22 @@ def doctor(manifest: dict) -> int:
             ok("Claude adapter present")
 
     version = opencode_version()
+    current = ".".join(map(str, version)) if version else ""
+    minimum = ".".join(map(str, MIN_OPENCODE))
     if version is None:
         warn("opencode CLI not found on PATH; cannot check its version")
     elif version < MIN_OPENCODE:
-        warn(f"OpenCode {'.'.join(map(str, version))} is older than {'.'.join(map(str, MIN_OPENCODE))}; "
-             "background subagents and the documented config need 2.3.0+")
+        err(f"OpenCode {current} is older than the required {minimum}; run `opencode upgrade`")
     else:
-        ok(f"opencode {'.'.join(map(str, version))}")
+        ok(f"opencode {current}")
+        if os.environ.get("FEFO_SKIP_UPDATE_CHECK") != "1":
+            latest = latest_opencode_version()
+            if latest is None:
+                warn("could not check for OpenCode updates")
+            elif version < version_tuple(latest):
+                err(f"OpenCode {current} is older than the latest {latest}; run `opencode upgrade`")
+            else:
+                ok(f"opencode is current (latest {latest})")
 
     config = ROOT / "opencode.json"
     if config.is_file():
@@ -1442,7 +1547,7 @@ def cmd_init(args) -> int:
 
 def cmd_build(args) -> int:
     if not args.no_ai and not opencode_bin():
-        raise SystemExit("FEFO: opencode not found; install OpenCode 2.3+ or use --no-ai")
+        raise SystemExit("FEFO: opencode not found; install the latest OpenCode or use --no-ai")
     status = cmd_init(args)
     if status != 0 or args.no_ai:
         return status
@@ -2068,6 +2173,8 @@ def main() -> int:
     resolve_workspace()
     parser = build_parser()
     args = parser.parse_args(argv)
+    if not update_gate(args):
+        return 1
     return args.func(args)
 
 
