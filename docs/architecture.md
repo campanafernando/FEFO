@@ -93,7 +93,7 @@ instructions go to `.fefo/AGENTS.md` (not the tracked bootstrap `AGENTS.md`),
 the bootstrap `codegraph/README.md` and `docs/vault/00-INDEX.md` are not
 overwritten. The tracked `.gitignore` lists the template checkout's local files.
 
-## Config merge order (verified on 2.4.2)
+## Config merge order
 
 OpenCode loads `opencode.json`, then `opencode.jsonc`, then
 `.opencode/opencode.json`. FEFO writes only `opencode.json`; the other two are

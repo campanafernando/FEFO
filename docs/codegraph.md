@@ -11,7 +11,7 @@ Install (no Node needed):
 `curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh | sh`.
 Upgrade with `codegraph upgrade`.
 
-Newer versions build the index during `codegraph init` and expose
+`codegraph init` builds the index and exposes
 `codegraph_explore` by default; FEFO detects `init --index` support. One
 `codegraph` MCP server plus an absolute `projectPath` per call covers every
 repo and worktree. Without MCP, use the CLI equivalent:

@@ -6,13 +6,13 @@ FEFO is a thin federation layer for OpenCode: one zsh CLI that writes a
 workspace's root instructions (`AGENTS.md`), OpenCode config (`opencode.json`),
 a markdown vault, and CodeGraph wiring for sibling repositories. The
 orchestration method lives in `AGENTS.md`, so any OpenCode session follows it
-with no FEFO agent, plugin, mode, or slash command.
+with no FEFO agent, plugin, or slash command.
 
 ## Requirements
 
 - zsh 5.8+ on Linux or macOS
 - git
-- OpenCode 2.4.2+ (latest)
+- OpenCode, latest (minimum 2.4.2)
 - Recommended, detected by `fefo doctor`: `codegraph` CLI, `browse` (browser
   MCP), ponytail plugin, caveman skill.
 - CodeGraph needs no Node: `curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh | sh`;
@@ -113,13 +113,3 @@ is strongly recommended for cheap workers and higher free-model limits.
 Claude Code CLI works directly too: FEFO generates `CLAUDE.md`,
 `.mcp.json`, and `.claude/skills/` when `claude on` (default). This is basic
 support — no OpenCode model pinning; subagents run on Claude models.
-
-## Upgrading from Python FEFO
-
-Re-run `fefo init --force` in the workspace. Python FEFO is retired. Removed:
-Python CLI and tests, Cursor/Copilot adapters, old `.claude` agents/commands/
-settings wrappers, slash commands, the `fefo` primary agent and "mode", the
-`opencode-fefo` plugin and its "fefo" permission action, Windows/PowerShell
-paths. Kept: the orchestration method (now in `AGENTS.md`), CodeGraph per
-repo, the vault, and `cmg`/`bng`/`doit`. Basic Claude Code CLI support
-(`CLAUDE.md`, `.mcp.json`, `.claude/skills`) is added.
