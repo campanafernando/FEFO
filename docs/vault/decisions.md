@@ -12,8 +12,7 @@ repository, including documentation-only orchestrators.
 
 Decision:
 
-- Require OpenCode 2.4.2+ and the latest published CLI. The installer and
-  mutating `fefo` commands stop when a newer version is available;
+- Require OpenCode 2.4.2+ and the latest published CLI. Mutating `fefo` commands stop when a newer version is available;
   `FEFO_SKIP_UPDATE_CHECK=1` is limited to CI/offline use.
 - Patch releases bump the floor and refresh the cached latest manually until the
   automatic updater ships; 2.4.2 is the current floor.
@@ -66,7 +65,7 @@ Decision:
   CodeGraph language, so it is never synced.
 - Agents are either the default copied set or AI-scoped; skills kept:
   `codegraph` and `vault-search` only.
-- Bonus shell functions `cmg`, `bng`, `doit` ship in `share/fefo.zsh`.
+- Bonus shell functions `cmg`, `bng`, `doit` ship with fefo-install (see 2026-11-27 whitelabel decision).
 
 Consequence: the FEFO repo shrinks to zsh + one Node helper; workspaces are
 regenerated with `fefo init --force` when upgrading from Python FEFO.
@@ -91,3 +90,7 @@ Decision:
 
 Consequence: Claude Code CLI users get the same structure and MCP wiring;
 OpenCode keeps model pinning and subagent policy.
+
+## 2026-11-27 — FEFO is the whitelabel reference
+
+Decision: FEFO is the whitelabel reference; installation lives only in fefo-install (downloads FEFO as a tarball, installs the CLI and the cmg/bng/doit helpers).

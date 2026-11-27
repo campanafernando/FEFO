@@ -34,9 +34,7 @@ workspace/
 | `lib/graph.zsh` | vault graph builder, `fefo graph` viewer, `fefo index --vault` |
 | `lib/vault-graph.mjs` | JSON → CodeGraph SQLite loader (only non-zsh file) |
 | `lib/agents.zsh` | `fefo agents`: default copy or AI-scoped generation |
-| `share/fefo.zsh` | bonus shell functions `cmg`/`bng`/`doit` + completion |
 | `templates/AGENTS.md` | root-instructions template with `@@X@@` placeholders |
-| `install.zsh` | curl\|zsh installer |
 
 ## File ownership
 
@@ -89,7 +87,7 @@ browse on. User defaults live in
 
 ## Template checkout
 
-When `<ws>/.fefo/template` exists (the FEFO repo itself), generated root
+When `<ws>/.fefo/template` exists (a FEFO contributor checkout), generated root
 instructions go to `.fefo/AGENTS.md` (not the tracked bootstrap `AGENTS.md`),
 `opencode.json` `instructions` = `[".fefo/AGENTS.md", "AGENTS.local.md"]`, and
 the bootstrap `codegraph/README.md` and `docs/vault/00-INDEX.md` are not

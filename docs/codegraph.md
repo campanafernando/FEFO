@@ -73,7 +73,7 @@ with `codegraph_context`/`codegraph_search` on the `vault` server.
 The loader writes nodes and edges but no `files` rows: when an MCP client
 connects, CodeGraph catches up by walking `files` and deleting rows for files it
 cannot parse, which would wipe every note. So `codegraph status docs/vault`
-reports `Files: 0` with real node and edge counts — that is expected.
+reports `Files: 0` with real symbol and edge counts — that is expected.
 
 ## know-graph viewer
 

@@ -9,12 +9,11 @@
 - Vault graph from Markdown + `fefo graph` viewer.
 - Worktree-aware `fefo index` with seeding.
 - Default or AI-scoped agents; `codegraph` and `vault-search` skills.
-- Bonus shell functions `cmg`, `bng`, `doit`.
 - `fefo handoff` protocol and `fefo graph`.
 
 ## In progress
 
-- Installer (`install.zsh`) and test suite for the zsh rewrite.
+- Test suite for the zsh rewrite.
 - `fefo agents --ai` non-interactive OpenCode job.
 - Vault graph viewer polish.
 

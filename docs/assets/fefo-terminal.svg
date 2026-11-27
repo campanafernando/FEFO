@@ -9,7 +9,7 @@
   <circle cx="130" cy="81.5" r="6.5" fill="#28c840"/>
   <text x="800" y="87" text-anchor="middle" fill="#8b96a0" font-family="Inter, 'Segoe UI', Ubuntu, Helvetica, Arial, sans-serif" font-size="15">fefo@linux: ~/EXAMPLE</text>
   <g font-family="'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Ubuntu Mono', monospace" font-size="17" xml:space="preserve" style="white-space:pre" fill="#c9d1d9">
-    <text x="105" y="152"><tspan fill="#4ade80">fefo@linux</tspan><tspan fill="#8b949e">:</tspan><tspan fill="#2dd4bf">~</tspan><tspan fill="#8b949e">$ </tspan><tspan fill="#e6edf3">curl -fsSL https://raw.githubusercontent.com/campanafernando/FEFO/main/install.zsh | zsh</tspan></text>
+    <text x="105" y="152"><tspan fill="#4ade80">fefo@linux</tspan><tspan fill="#8b949e">:</tspan><tspan fill="#2dd4bf">~</tspan><tspan fill="#8b949e">$ </tspan><tspan fill="#e6edf3">curl -fsSL https://raw.githubusercontent.com/campanafernando/fefo-install/main/install.sh | sh</tspan></text>
     <text x="105" y="180" fill="#4ade80">FEFO installed.</text>
     <text x="105" y="208">&#160;&#160;CLI:&#160;&#160;/home/fefo/.local/bin/fefo</text>
     <text x="105" y="236">&#160;&#160;Home:&#160;/home/fefo/.local/share/fefo</text>

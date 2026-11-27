@@ -59,7 +59,7 @@ mkrepo "$REPOS/flutter" flutter
 mkrepo "$REPOS/docs" docs
 
 # zsh -n all owned zsh files
-for f in $FEFO_ROOT/lib/*.zsh(N) $FEFO_ROOT/bin/fefo $FEFO_ROOT/install.zsh $FEFO_ROOT/share/fefo.zsh; do
+for f in $FEFO_ROOT/lib/*.zsh(N) $FEFO_ROOT/bin/fefo; do
   if [[ -f "$f" ]]; then
     if zsh -n "$f"; then
       ((PASS++)); print "PASS zsh -n ${f#$FEFO_ROOT/}"
@@ -280,8 +280,8 @@ fefo init --name A --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
 t "agents default" 'fefo agents --default --force >/dev/null 2>&1'
 t "agents copied" '[[ -n "$(ls .opencode/agents/*.md 2>/dev/null)" ]]'
 
-# source share
-t "source share" 'zsh -c "source $FEFO_ROOT/share/fefo.zsh; whence -w cmg bng doit" 2>&1 | grep -q "cmg"'
+# FEFO ships no installer
+t "no install.zsh or share/" '[[ ! -e $FEFO_ROOT/install.zsh && ! -e $FEFO_ROOT/share ]]'
 
 # Claude Code CLI basic support (§16)
 ws=$tmp/ws_claude; newws "$ws"
@@ -325,11 +325,6 @@ t "doctor flags .cursor" 'print -r -- "$DOCOUT2" | grep -q ".cursor"'
 t "doctor does not flag CLAUDE.md" '! print -r -- "$DOCOUT2" | grep -q "CLAUDE.md"'
 
 export FEFO_HANDOFF=$tmp/handoff
-
-# 1 installer piped from a checkout must honor --dir
-ins=$tmp/ins; rm -rf "$ins"
-(cd "$FEFO_ROOT" && cat install.zsh | zsh -s -- --from "$FEFO_ROOT" --dir "$ins" --yes --cheap >/dev/null 2>&1)
-t "install piped from checkout honors --dir" '[[ -f $ins/bin/fefo ]]'
 
 # 2 gitignore without trailing newline
 ws=$tmp/ws_gi; newws "$ws"; cd "$ws"
