@@ -1051,6 +1051,9 @@ _fefo_cmd_doctor() {
 
   # legacy artifacts (inspect $PWD when no workspace was found)
   local lw=${ws:-$PWD} legacy=0
+  # outside a workspace, only a real old-FEFO marker makes $PWD a legacy workspace
+  # (so ~/.claude/settings.json in $HOME is never flagged)
+  [[ -z $ws && ! -f $PWD/.fefo/workspace.json && ! -f $PWD/tools/fefo.py ]] && lw=/nonexistent
   _fefo_legacy() { print -r -- "! legacy $1 present — $2"; (( legacy++ )); }
   local hint="fefo init --force"
   [[ -n $ws ]] && hint=remove

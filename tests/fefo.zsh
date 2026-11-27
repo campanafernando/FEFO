@@ -71,8 +71,16 @@ for f in $FEFO_ROOT/lib/*.zsh(N) $FEFO_ROOT/bin/fefo $FEFO_ROOT/install.zsh $FEF
   fi
 done
 
+# FEFO's own files: tracked + untracked-not-ignored (a template checkout also holds ignored local files)
+if git -C "$FEFO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  scan=(${(f)"$(git -C "$FEFO_ROOT" ls-files --cached --others --exclude-standard)"})
+else
+  scan=(${(f)"$(cd "$FEFO_ROOT" && find . -type f -not -path './.git/*')"})
+fi
+scan=(${scan:#(tests/*|./tests/*)})
+
 # no python/jq/node calls outside tests (except vault-graph.mjs and graph.zsh codegraph-node line)
-bad=$(grep -R -n -E 'python3| jq |(^|[^_a-zA-Z])node ' "$FEFO_ROOT" --exclude-dir=tests --exclude-dir=.git --exclude='vault-graph.mjs' 2>/dev/null | grep -v 'graph.zsh.*codegraph.*node' || true)
+bad=$(cd "$FEFO_ROOT" && grep -n -E 'python3| jq |(^|[^_a-zA-Z])node ' -- ${scan:#*vault-graph.mjs} 2>/dev/null | grep -v 'graph.zsh.*codegraph.*node' || true)
 if [[ -z "$bad" ]]; then
   ((PASS++)); print "PASS no python/jq/node calls"
 else
@@ -82,7 +90,7 @@ fi
 
 # no tool-markup garbage anywhere
 lt='<'; pipe='|'
-if grep -R -I -F -q --exclude-dir=.git --exclude=fefo.zsh -e "${lt}${pipe}" "$FEFO_ROOT" 2>/dev/null; then
+if (cd "$FEFO_ROOT" && grep -I -F -q -e "${lt}${pipe}" -- "${scan[@]}" 2>/dev/null); then
   ((FAIL++)); print "FAIL no <| garbage" >&2
 else
   ((PASS++)); print "PASS no <| garbage"
