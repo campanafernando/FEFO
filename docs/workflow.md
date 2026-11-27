@@ -16,6 +16,16 @@ A good start prompt has four parts:
 
 Quote the rules verbatim into subagent briefs so they survive compaction.
 
+## Session start
+
+1. Fetch the repos you will touch: `git -C <repo> fetch --quiet`.
+2. Refresh the code vaults and graph: `fefo vault --changed` (instant when
+   nothing moved).
+3. Navigate with `fefo graph --query <term>` (`kind | label | path:line`), then
+   read vault-first + scoped grep: open the repo's
+   `docs/vault/<slug>-vault/00-INDEX.md`, follow the module note, use
+   `path:line`, verify usages with `git grep` inside the listed files.
+
 ## Lanes
 
 Split work into lanes with disjoint scopes. Each lane owns a set of files and
@@ -103,7 +113,10 @@ deploy and verify the backup by full restore plus count comparison.
 ## Long sessions
 
 - Keep decisions and status in the handoff `README.md`.
-- Refresh/sync CodeGraph indexes of touched repos as the first step.
+- Refresh code vaults and the graph first: `fefo vault --changed`; re-run
+  `fefo vault` after edits.
+- For sessions of several hours, offer an OpenCode automation (shell, every
+  30 minutes) running `fefo vault --changed`.
 - Use worktrees under a stable path, never the main checkout when it has
   uncommitted owner work.
 - Run ponytail-review on integrated diffs before deploy.

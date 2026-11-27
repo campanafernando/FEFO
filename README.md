@@ -1,33 +1,48 @@
 # FEFO
 
-![FEFO in a terminal: init, parallel lanes](docs/assets/fefo-terminal.png)
+![FEFO in a terminal: init, parallel lanes](docs/assets/fefo-terminal.svg)
 
 FEFO is a thin federation layer for OpenCode: one zsh CLI that writes a
 workspace's root instructions (`AGENTS.md`), OpenCode config (`opencode.json`),
-a markdown vault, and CodeGraph wiring for sibling repositories. The
-orchestration method lives in `AGENTS.md`, so any OpenCode session follows it
-with no FEFO agent, plugin, or slash command.
+a markdown knowledge vault, generated per-repo code vaults, and a FEFO graph
+over both. The orchestration method lives in
+`AGENTS.md`, so any OpenCode session follows it with no FEFO agent, plugin, or
+slash command.
 
 ## Requirements
 
 - zsh 5.8+ on Linux or macOS
 - git
 - OpenCode, latest (minimum 2.4.2)
-- Recommended, detected by `fefo doctor`: `codegraph` CLI, `browse` (browser
-  MCP), ponytail plugin, caveman skill.
-- CodeGraph needs no Node: `curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh | sh`;
-  upgrade with `codegraph upgrade`.
+- Recommended, detected by `fefo doctor`: `browse` (browser MCP), ponytail
+  plugin, caveman skill.
 
 ## Install
 
-Install with [fefo-install](https://github.com/campanafernando/fefo-install), which also adds the cmg/bng/doit shell helpers.
+Install built in: one line, no clone.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/campanafernando/FEFO/main/install.sh | sh
+```
+
+Installs the `fefo` CLI (bin link into `~/.local/bin`), the cmg/bng/doit shell helpers
+(`~/.local/share/fefo/share/fefo.zsh`, sourced from `~/.zshrc`), and opt-in OpenCode
+components (browse, ponytail, caveman). Flags: `--dir`, `--ref`, `--cheap`, `--model`,
+`--fallback`, `--yes`, `--with-all`, `--uninstall`, `--from`, `--ai-agents`, `--default-agents`;
+env: `FEFO_INSTALL_TARBALL`, `FEFO_INSTALL_DRY`, `FEFO_REF`.
+
+Uninstall:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/campanafernando/FEFO/main/install.sh | sh -s -- --uninstall
+```
 
 ## Quick start
 
 ```sh
 mkdir -p ~/work && cd ~/work
 git clone <api-url> api && git clone <web-url> web
-fefo init        # scans api/ and web/, asks cheap or default, indexes
+fefo init        # scans api/ and web/, asks cheap or default, builds vaults + graph
 opencode         # then: "act as orchestrator: <spec>"
 ```
 
@@ -53,26 +68,27 @@ Set with `fefo model cheap|default`, or interactively during `fefo init`.
 
 | Command | Purpose |
 |---|---|
-| `fefo init` | create manifest, sync, index |
+| `fefo init` | create manifest, sync, build code vaults + graph |
 | `fefo add PATH` | add a repository |
 | `fefo remove NAME` | remove a repository |
 | `fefo sync [--check]` | regenerate managed files |
 | `fefo status` | workspace overview |
-| `fefo index [NAME...]` | refresh CodeGraph indexes |
-| `fefo index --vault` | rebuild the vault graph |
+| `fefo vault [--changed] [NAME...]` | regenerate per-repo code vaults + `docs/vault/graph.json` |
 | `fefo doctor` | validate workspace and tools |
 | `fefo mcp list\|add\|remove` | manage MCP servers |
 | `fefo model ...` | show/set subagent policy |
 | `fefo handoff TASK LANE...` | create handoff directory |
-| `fefo graph` | open the know-graph viewer |
+| `fefo graph [--query TERM] [--out FILE]` | query the vault graph or open the viewer |
 | `fefo agents` | install default or AI-scoped agents |
 | `fefo version`, `fefo help` | |
 
 ## Workspace files
 
 Generated (rewritten by `fefo sync`): `opencode.json`, `AGENTS.md`,
-`docs/vault/*`, `codegraph/README.md`, launchers, and (when `claude on`)
-`CLAUDE.md`, `.mcp.json`, `.claude/skills/*`.
+`docs/vault/*`, launchers, and (when `claude on`)
+`CLAUDE.md`, `.mcp.json`, `.claude/skills/*`. Per-repo code vaults
+(`docs/vault/<slug>-vault/`, written by `fefo vault`) and
+`docs/vault/graph.json` are generated and gitignored.
 
 Yours (never overwritten): `AGENTS.local.md`, `docs/vault/decisions.md`,
 `.env`, `.env.mcp`, `opencode.jsonc`, `.opencode/opencode.json`. OpenCode
@@ -89,19 +105,41 @@ handoff root: `/var/tmp/fefo/<ws-slug>/<task>`. Each lane writes `report.md`,
 then an empty `DONE`; `fefo handoff <task> --status` shows which lanes are done.
 Resume stopped subagents by session id.
 
-## CodeGraph, vault graph, know-graph
+## Code vaults
 
-- CodeGraph: one server (`codegraph`); pass absolute `projectPath`. Refresh
-  indexes first: `fefo index`.
-- Vault: Markdown is not a CodeGraph language. A separate `vault` server
-  (served with `--no-watch`) exposes notes; rebuild with `fefo index --vault`.
-- know-graph: `fefo graph` renders the vault graph in a local browser page.
+`fefo vault` writes one generated code vault per repo (vault on by default;
+per-repo `vault=off`) to `docs/vault/<slug>-vault/`:
+
+- `00-INDEX.md`: one-line role per module, entry points, manifest commands,
+  how to use;
+- `modules/<m>.md`: role, files, top-level definitions `path — Name:line`,
+  routes, models, `[[modules/x]]` import edges, `Used by` importers;
+- `recent.md`: last 20 commits with per-module file counts.
+
+Vault-first + scoped grep: read the index → module note → `path:line`, then
+verify usages with `git -C <repo> grep -n` only inside the listed files; never
+grep a whole repo before reading its index. Source is `git ls-files`;
+tests/migrations are skipped.
+
+Auto refresh: `fefo vault --changed` runs at session start (unchanged repos
+cost ~0); long sessions can add an OpenCode automation (shell, every 30
+minutes) running `fefo vault --changed`. Code vaults are generated and
+gitignored (`/docs/vault/*-vault/`); `fefo vault` after edits refreshes them.
+
+## FEFO graph
+
+`fefo graph --query <term>` searches symbols, modules, routes, commits and
+notes in `docs/vault/graph.json` (labels and paths, case-insensitive; exact and
+prefix matches first, cap 20) and prints `kind`, label and `path:line`. The
+graph is built from every vault Markdown file by `fefo vault` and refreshed by
+`fefo vault --changed`. `fefo graph` alone opens the same graph in a local
+viewer; `--out FILE` writes the HTML only.
 
 ## Agents
 
 `fefo agents` installs either the default copied set (offline, recommended) or
-AI-scoped agents generated by one OpenCode job. Only `codegraph` and
-`vault-search` skills ship. Subagents are `mode: subagent` with no model pin.
+AI-scoped agents generated by one OpenCode job. Only the `vault-search` skill
+ships. Subagents are `mode: subagent` with no model pin.
 
 ## Using Claude
 

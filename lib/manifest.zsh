@@ -9,7 +9,6 @@ typeset -g FEFO_PARALLEL=4
 typeset -g FEFO_HANDOFF_ENV=${FEFO_HANDOFF:-}  # caller override, survives manifest defaults
 typeset -g FEFO_HANDOFF=/var/tmp/fefo
 typeset -g FEFO_BROWSE=1
-typeset -g FEFO_CODEGRAPH=1
 typeset -g FEFO_VAULT=1
 typeset -g FEFO_CLAUDE=1
 typeset -g FEFO_AGENTS=default
@@ -17,7 +16,7 @@ typeset -g FEFO_AIMODEL=""
 typeset -g FEFO_MODEL=""
 typeset -ga FEFO_PLUGINS=()
 typeset -ga FEFO_REPOS=()
-typeset -gA FEFO_R_PATH FEFO_R_ROLE FEFO_R_STACK FEFO_R_CG FEFO_R_TEST FEFO_R_LINT FEFO_R_BUILD FEFO_R_RUN
+typeset -gA FEFO_R_PATH FEFO_R_ROLE FEFO_R_STACK FEFO_R_VAULT FEFO_R_TEST FEFO_R_LINT FEFO_R_BUILD FEFO_R_RUN
 typeset -ga FEFO_MCPS=()
 typeset -gA FEFO_M_TYPE FEFO_M_TARGET FEFO_M_HEADERS
 
@@ -31,7 +30,6 @@ _fefo_manifest_reset() {
   FEFO_PARALLEL=4
   FEFO_HANDOFF=/var/tmp/fefo
   FEFO_BROWSE=1
-  FEFO_CODEGRAPH=1
   FEFO_VAULT=1
   FEFO_CLAUDE=1
   FEFO_AGENTS=default
@@ -42,7 +40,7 @@ _fefo_manifest_reset() {
   FEFO_R_PATH=()
   FEFO_R_ROLE=()
   FEFO_R_STACK=()
-  FEFO_R_CG=()
+  FEFO_R_VAULT=()
   FEFO_R_TEST=()
   FEFO_R_LINT=()
   FEFO_R_BUILD=()
@@ -97,12 +95,10 @@ _fefo_manifest_parse() {
       browse)
         [[ ${words[2]:-} == on ]] && FEFO_BROWSE=1 || FEFO_BROWSE=0
         ;;
-      codegraph)
-        [[ ${words[2]:-} == on ]] && FEFO_CODEGRAPH=1 || FEFO_CODEGRAPH=0
-        ;;
       vault)
         [[ ${words[2]:-} == on ]] && FEFO_VAULT=1 || FEFO_VAULT=0
         ;;
+      codegraph) ;;  # shortcut: legacy manifests; FEFO owns the graph now
       claude)
         [[ ${words[2]:-} == on ]] && FEFO_CLAUDE=1 || FEFO_CLAUDE=0
         ;;
@@ -126,7 +122,7 @@ _fefo_manifest_parse() {
         FEFO_R_PATH[$name]=$rpath
         FEFO_R_ROLE[$name]=service
         FEFO_R_STACK[$name]=generic
-        FEFO_R_CG[$name]=1
+        FEFO_R_VAULT[$name]=1
         FEFO_R_TEST[$name]=""
         FEFO_R_LINT[$name]=""
         FEFO_R_BUILD[$name]=""
@@ -140,7 +136,8 @@ _fefo_manifest_parse() {
           case $key in
             role) FEFO_R_ROLE[$name]=$val ;;
             stack) FEFO_R_STACK[$name]=$val ;;
-            codegraph) [[ $val == off ]] && FEFO_R_CG[$name]=0 || FEFO_R_CG[$name]=1 ;;
+            vault) [[ $val == off ]] && FEFO_R_VAULT[$name]=0 || FEFO_R_VAULT[$name]=1 ;;
+            codegraph) ;;  # shortcut: legacy manifests; ignored
             test) FEFO_R_TEST[$name]=$val ;;
             lint) FEFO_R_LINT[$name]=$val ;;
             build) FEFO_R_BUILD[$name]=$val ;;
@@ -237,7 +234,6 @@ _fefo_manifest_save() {
     print -r -- "parallel $FEFO_PARALLEL"
     print -r -- "handoff ${(q-)FEFO_HANDOFF}"
     if (( FEFO_BROWSE )); then print -r -- "browse on"; else print -r -- "browse off"; fi
-    if (( FEFO_CODEGRAPH )); then print -r -- "codegraph on"; else print -r -- "codegraph off"; fi
     if (( FEFO_VAULT )); then print -r -- "vault on"; else print -r -- "vault off"; fi
     if (( FEFO_CLAUDE )); then print -r -- "claude on"; else print -r -- "claude off"; fi
     print -r -- "agents $FEFO_AGENTS"
@@ -249,9 +245,9 @@ _fefo_manifest_save() {
     done
     local r
     for r in "${FEFO_REPOS[@]}"; do
-      local cg=on
-      (( FEFO_R_CG[$r] )) || cg=off
-      local rl="repo ${(q-)r} ${(q-)FEFO_R_PATH[$r]} role=${(q-)FEFO_R_ROLE[$r]} stack=${(q-)FEFO_R_STACK[$r]} codegraph=$cg"
+      local rv=on
+      (( FEFO_R_VAULT[$r] )) || rv=off
+      local rl="repo ${(q-)r} ${(q-)FEFO_R_PATH[$r]} role=${(q-)FEFO_R_ROLE[$r]} stack=${(q-)FEFO_R_STACK[$r]} vault=$rv"
       [[ -n ${FEFO_R_TEST[$r]} ]] && rl+=" test=${(q-)FEFO_R_TEST[$r]}"
       [[ -n ${FEFO_R_LINT[$r]} ]] && rl+=" lint=${(q-)FEFO_R_LINT[$r]}"
       [[ -n ${FEFO_R_BUILD[$r]} ]] && rl+=" build=${(q-)FEFO_R_BUILD[$r]}"

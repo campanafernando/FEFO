@@ -4,12 +4,12 @@
 
 - zsh-only CLI (`fefo`) with manifest DSL `.fefo/workspace.zsh`.
 - OpenCode-first: single `opencode.json`; basic Claude Code support.
-- One CodeGraph MCP server with absolute `projectPath`; separate `vault`
-  server with `--no-watch`.
-- Vault graph from Markdown + `fefo graph` viewer.
-- Worktree-aware `fefo index` with seeding.
-- Default or AI-scoped agents; `codegraph` and `vault-search` skills.
-- `fefo handoff` protocol and `fefo graph`.
+- Generated per-repo code vaults (`fefo vault`, vault-first + scoped grep;
+  `--changed` session-start refresh; gitignored `docs/vault/<slug>-vault/`).
+- FEFO graph (`docs/vault/graph.json`, `fefo graph --query <term>`) over code
+  vaults and hand-written notes; plain-markdown knowledge vault.
+- Default or AI-scoped agents; `vault-search` skill.
+- `fefo handoff` protocol.
 
 ## In progress
 
@@ -21,5 +21,3 @@
 
 - Automatic OpenCode update process with the same version gate.
 - Optional semantic search over the vault.
-- Link repository notes to CodeGraph symbols and source paths.
-- `fefo vault` for index and link validation.

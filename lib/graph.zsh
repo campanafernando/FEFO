@@ -1,5 +1,5 @@
 #!/usr/bin/env zsh
-# FEFO vault graph: zsh parser + know-graph viewer + vault index loader trigger.
+# FEFO know-graph: zsh markdown graph parser + know-graph viewer.
 
 _fefo__trim() {
   emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail typeset_silent
@@ -26,6 +26,20 @@ _fefo__graph_add_edge() {
   _FG_EDGE_SEEN[$key]=1
   local js=$(_fefo_json "$s") jt=$(_fefo_json "$t") jk=$(_fefo_json "$kind")
   _FG_EDGES+=("{\"s\":$js,\"t\":$jt,\"kind\":$jk,\"line\":$line}")
+}
+
+_fefo__graph_location() {  # $1 rel $2 line $3 label $4 path(optional)
+  emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail typeset_silent
+  (( _FG_LOCCOUNT >= 5000 )) && return
+  _FG_LOCCOUNT=$(( _FG_LOCCOUNT + 1 ))
+  _fefo__graph_add_node "location:${1}:${2}" "location" "$3" "${4:-$1}" "$2"
+}
+
+_fefo_graph_json() {  # prints workspace docs/vault/graph.json path
+  emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail typeset_silent
+  local ws=${FEFO_WS:-}
+  [[ -n $ws ]] || ws=$(_fefo_root) || return 1
+  print -r -- "$ws/docs/vault/graph.json"
 }
 
 _fefo__graph_resolve() {
@@ -67,11 +81,12 @@ _fefo_graph_build() {
   vault=${vault:A}
   _FG_NODES=(); _FG_NODE_SEEN=(); _FG_EDGES=(); _FG_EDGE_SEEN=(); _FG_RELSET=(); _FG_BYBASE=()
   typeset -gA _FG_NODE_SEEN _FG_EDGE_SEEN _FG_RELSET _FG_BYBASE
+  typeset -g _FG_LOCCOUNT=0
   local -a files=() rels=()
   local f rel
   while IFS= read -r f; do
     [[ -n "$f" ]] && files+=("$f")
-  done < <(find "$vault" -type d \( -name .codegraph -o -name .obsidian -o -name .git -o -name node_modules \) -prune -o -type f -name '*.md' -print | sort)
+  done < <(find "$vault" -type d \( -name .obsidian -o -name .git -o -name node_modules \) -prune -o -type f -name '*.md' -print | sort)
   for f in "${files[@]}"; do
     rel=${f#$vault/}
     rels+=("$rel")
@@ -126,6 +141,12 @@ _fefo_graph_build() {
     fi
 
     _fefo__graph_add_node "file:$rel" "file" "${rel:t}" "$rel" 1
+    local cur_section="" lastsym="" modname=""
+    if [[ $rel == */modules/*.md ]]; then
+      modname=${rel:t}; modname=${modname%.md}
+      _fefo__graph_add_node "module:$modname" "module" "$modname" "$rel" 1
+      _fefo__graph_add_edge "file:$rel" "module:$modname" "documents" 1
+    fi
     local t
     for t in "${ftags[@]}"; do
       _fefo__graph_add_node "tag:$t" "tag" "$t" "$rel" 1
@@ -148,6 +169,85 @@ _fefo_graph_build() {
         _fefo__graph_add_node "heading:$rel#$slug" "heading" "$text" "$rel" "$i"
         _fefo__graph_add_edge "file:$rel" "heading:$rel#$slug" "contains" "$i"
       fi
+      if [[ "$line" =~ '^##[[:space:]]+(.+)$' ]]; then
+        cur_section=${match[1]:l}
+        cur_section=${cur_section%%[[:space:]]\#*}
+      fi
+
+      # FEFO graph nodes: symbols, routes, commits and vault edges.
+      if [[ "$line" == *' — '* && "$line" != -* ]]; then
+        local lhs=$(_fefo__trim "${line%% — *}") rhs=$(_fefo__trim "${line#* — }")
+        local -a nmparts=("${(@s:,:)rhs}")
+        local nm sn sp sl sid
+        for nm in "${nmparts[@]}"; do
+          nm=$(_fefo__trim "$nm")
+          if [[ $lhs == */* || $lhs == *.* ]]; then
+            if [[ $nm =~ '^([A-Za-z_][A-Za-z0-9_]*):([0-9]+)$' ]]; then
+              sn=${match[1]}; sl=${match[2]}; sp=$lhs
+            else
+              continue
+            fi
+          elif [[ $lhs != *:* && $nm =~ '^([^:]+):([0-9]+)$' ]]; then
+            sn=$lhs; sp=${match[1]}; sl=${match[2]}
+          else
+            continue
+          fi
+          sid="symbol:$sn:$sp:$sl"
+          _fefo__graph_add_node "$sid" "symbol" "$sn" "$sp" "$sl"
+          lastsym=$sid
+        done
+      fi
+      if [[ "$line" =~ '^-[[:space:]]+([0-9a-f]+)[[:space:]]+([0-9-]+)[[:space:]]+(.+)[[:space:]]—[[:space:]]+(.+)$' ]]; then
+        local ch=${match[1]} subj=$(_fefo__trim "${match[3]}") mods=${match[4]}
+        local cid="commit:$ch"
+        _fefo__graph_add_node "$cid" "commit" "$subj" "$rel" "$i"
+        local -a mparts=("${(@s:,:)mods}")
+        local mp mn
+        for mp in "${mparts[@]}"; do
+          mp=$(_fefo__trim "$mp")
+          if [[ $mp =~ '^([A-Za-z][A-Za-z0-9_-]*)\([0-9]+\)$' ]]; then
+            mn=${match[1]}
+            _fefo__graph_add_node "module:$mn" "module" "$mn" "$rel" 1
+            _fefo__graph_add_edge "$cid" "module:$mn" "touches" "$i"
+          fi
+        done
+      elif [[ "$line" =~ '^-[[:space:]]+(.+)[[:space:]]→[[:space:]]+(.+)$' ]]; then
+        local left=$(_fefo__trim "${match[1]}") right=$(_fefo__trim "${match[2]}")
+        local srcid=${lastsym:-${modname:+module:$modname}}
+        [[ -n $srcid ]] || srcid="file:$rel"
+        local tid
+        case $cur_section in
+          'used by')
+            if [[ $right == modules/* ]]; then
+              tid="module:${right#modules/}"; tid=${tid%.md}
+              _fefo__graph_add_node "$tid" "module" "${tid#module:}" "$rel" "$i"
+            else
+              tid="location:$right:1"
+              _fefo__graph_add_node "$tid" "location" "$right" "$right" 1
+            fi
+            _fefo__graph_add_edge "$srcid" "$tid" "used-by" "$i"
+            ;;
+          'imported by'|'imports from')
+            if [[ $right == modules/* ]]; then
+              tid="module:${right#modules/}"; tid=${tid%.md}
+            else
+              tid="location:$right:1"
+            fi
+            _fefo__graph_add_node "$tid" "location" "$right" "$right" 1
+            _fefo__graph_add_edge "$srcid" "$tid" "imports" "$i"
+            ;;
+          *)
+            _fefo__graph_add_node "route:$left" "route" "$left" "$rel" "$i"
+            ;;
+        esac
+      elif [[ ( $cur_section == 'imported by' || $cur_section == 'imports from' ) && "$line" == '- [[modules/'* ]]; then
+        local srcid=${modname:+module:$modname}
+        [[ -n $srcid ]] || srcid=${lastsym:-file:$rel}
+        local mn=${line#*\[\[modules/}; mn=${mn%%\]\]*}
+        _fefo__graph_add_edge "$srcid" "module:$mn" "imports" "$i"
+      fi
+      local loclabel=$(_fefo__trim "$line")
+      [[ -n $loclabel ]] && _fefo__graph_location "$rel" "$i" "$loclabel"
 
       local rest=$line
       while [[ "$rest" == *'#'* ]]; do
@@ -266,34 +366,72 @@ _fefo_graph_build() {
   printf '{"nodes":[%s],"edges":[%s]}\n' "$nodes_json" "$edges_json" > "$out"
 }
 
-_fefo_index_vault() {
+_fefo_graph_query() {
   emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail typeset_silent
-  local root vault
-  root=$(_fefo_root 2>/dev/null) || root=$PWD
-  vault="$root/docs/vault"
-  [[ -d "$vault" ]] || { _fefo_die "vault not found: $vault"; return 1; }
-  if [[ ! -d "$vault/.codegraph" ]]; then
-    codegraph init "$vault" || { _fefo_die "codegraph init failed"; return 1; }
+  local term=${1:-}
+  [[ -n $term ]] || return 0
+  local g
+  g=$(_fefo_graph_json) || return 1
+  if [[ ! -f $g ]]; then
+    local v=${g:h}
+    [[ -d $v ]] || { _fefo_die "vault not found: $v"; return 1; }
+    _fefo_graph_build "$v" "$g" || return 1
   fi
-  local json="$vault/.codegraph/vault-graph.json"
-  _fefo_graph_build "$vault" "$json" || return 1
-  local cg node
-  cg=$(whence -p codegraph) || { _fefo_die "codegraph not found"; return 1; }
-  node="${cg:A:h:h}/node"
-  "$node" "$FEFO_HOME/lib/vault-graph.mjs" "$vault" || { _fefo_die "vault-graph loader failed"; return 1; }
+  local json; json=$(<"$g")
+  local tl=${term:l}
+  local -a exact=() prefix=() rest=() all=()
+  local s=$json obj kind label path line out kindl pathl item
+  local n=0
+  while [[ $s == *\{* ]]; do
+    s=${s#*\{}
+    obj=${s%%\}*}
+    if [[ $obj == *'"kind":'* && $obj == *'"label":'* && $obj == *'"path":'* ]]; then
+      kind=""; label=""; path=""; line=0
+      [[ $obj =~ '"kind":"([^"]*)"' ]] && kind=$match[1]
+      [[ $obj =~ '"label":"([^"]*)"' ]] && label=$match[1]
+      [[ $obj =~ '"path":"([^"]*)"' ]] && path=$match[1]
+      [[ $obj =~ '"line":([0-9]+)' ]] && line=${match[1]}
+      kindl=${label:l}; pathl=${path:l}
+      out="$kind"$'\t'"$label"$'\t'"$path:$line"
+      if [[ $kindl == "$tl" ]]; then
+        exact+=("$out")
+      elif [[ $kindl == "$tl"* ]]; then
+        prefix+=("$out")
+      elif [[ $kindl == *"$tl"* || $pathl == *"$tl"* ]]; then
+        rest+=("$out")
+      fi
+    fi
+    [[ $s == *\}* ]] || break
+    s=${s#*\}}
+  done
+  all=("${exact[@]}" "${prefix[@]}" "${rest[@]}")
+  for item in "${all[@]}"; do
+    (( n >= 20 )) && break
+    print -r -- "$item"
+    (( n++ ))
+  done
+  return 0
 }
 
 _fefo_cmd_graph() {
   emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail typeset_silent
-  local port="" open=0 out=""
+  local port="" open=0 out="" query=""
   while (( $# )); do
     case $1 in
+      --query) [[ -n ${2:-} ]] || { _fefo_die "--query needs TERM"; return 2; }; query=$2; shift 2 ;;
       --port) port=$2; shift 2 ;;
       --open) open=1; shift ;;
       --out) out=$2; shift 2 ;;
       *) _fefo_die "unknown option: $1"; return 2 ;;
     esac
   done
+  if [[ -n $query ]]; then
+    if [[ -n $port || $open == 1 || -n $out ]]; then
+      _fefo_die "--query cannot be combined with --port/--open/--out"; return 2
+    fi
+    _fefo_graph_query "$query"
+    return $?
+  fi
   local root
   root=$(_fefo_root 2>/dev/null) || root=$PWD
   local vault="$root/docs/vault"
@@ -306,8 +444,10 @@ _fefo_cmd_graph() {
   slug=$(_fefo_slug "${root:t}")
   local cachedir="${XDG_CACHE_HOME:-$HOME/.cache}/fefo/$slug"
   mkdir -p "$cachedir"
-  local jsonfile="$cachedir/graph.json"
-  _fefo_graph_build "$vault" "$jsonfile" || return 1
+  local jsonfile="$vault/graph.json"
+  if [[ ! -f "$jsonfile" ]]; then
+    _fefo_graph_build "$vault" "$jsonfile" || return 1
+  fi
   local json
   json=$(<"$jsonfile")
   local template="$home/templates/know-graph.html"

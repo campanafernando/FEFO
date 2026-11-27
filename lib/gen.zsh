@@ -46,7 +46,7 @@ _fefo_gen_opencode() {
   done
   print -r -- '  ],'
 
-  print -r -- '  "watcher": { "ignore": ["**/.codegraph/**", "**/node_modules/**", "**/.venv/**", "**/venv/**", "**/__pycache__/**"] },'
+  print -r -- '  "watcher": { "ignore": ["**/node_modules/**", "**/.venv/**", "**/venv/**", "**/__pycache__/**"] },'
   print -r -- '  "experimental": { "subagent_depth": 2, "todo": true },'
 
   # references
@@ -73,18 +73,6 @@ _fefo_gen_opencode() {
 
   # mcp servers
   local -a srv=()
-  local cg_on=0
-  if (( ${FEFO_CODEGRAPH:-1} )); then
-    for repo in "${FEFO_REPOS[@]}"; do
-      if (( ${FEFO_R_CG[$repo]:-0} )); then cg_on=1; break; fi
-    done
-  fi
-  if (( cg_on )); then
-    srv+=("      \"codegraph\": {\"type\": \"local\", \"command\": [\"codegraph\", \"serve\", \"--mcp\"]}")
-  fi
-  if (( ${FEFO_VAULT:-0} )); then
-    srv+=("      \"vault\": {\"type\": \"local\", \"command\": [\"codegraph\", \"serve\", \"--mcp\", \"--no-watch\", \"--path\", \"docs/vault\"]}")
-  fi
   if (( ${FEFO_BROWSE:-0} )); then
     srv+=("      \"browse\": {\"type\": \"local\", \"command\": [\"zsh\", \".opencode/bin/browse-mcp\"]}")
   fi
@@ -167,14 +155,12 @@ _fefo_gen_agents() {
   emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail
   local tpl="${FEFO_HOME}/templates/AGENTS.md"
   [[ -f $tpl ]] || { _fefo_die "template missing: $tpl"; return 1; }
-  local content; content=$(<"$tpl")
   local name=$FEFO_NAME
 
-  local repo_table="| Repo | Path | Role | Stack | CodeGraph | Commands |"$'\n'"|---|---|---|---|---|---|"
+  local repo_table="| Repo | Path | Role | Stack | Commands |"$'\n'"|---|---|---|---|---|"
   local repo
   for repo in "${FEFO_REPOS[@]}"; do
     local role=${FEFO_R_ROLE[$repo]:-} stack=${FEFO_R_STACK[$repo]:-} rpath=${FEFO_R_PATH[$repo]:-}
-    local cg=off; (( ${FEFO_R_CG[$repo]:-0} )) && cg=on
     local test=${FEFO_R_TEST[$repo]:-} lint=${FEFO_R_LINT[$repo]:-} build=${FEFO_R_BUILD[$repo]:-} run=${FEFO_R_RUN[$repo]:-}
     local -a parts=()
     [[ -n $test ]] && parts+=("test: $test")
@@ -183,22 +169,20 @@ _fefo_gen_agents() {
     [[ -n $run ]] && parts+=("run: $run")
     local cmds="${(j: · :)parts}"
     [[ -z $cmds ]] && cmds="—"
-    repo_table+=$'\n'"| $repo | $rpath | $role | $stack | $cg | $cmds |"
+    repo_table+=$'\n'"| $repo | $rpath | $role | $stack | $cmds |"
   done
 
-  local codegraph=""
-  if (( ${FEFO_CODEGRAPH:-1} )); then
+  # @@VAULTS@@: one line per vault-on repo
+  local vaults=""
+  if (( ${FEFO_VAULT:-0} )); then
+    local slug
     for repo in "${FEFO_REPOS[@]}"; do
-      if (( ${FEFO_R_CG[$repo]:-0} )); then
-        local rpath=${FEFO_R_PATH[$repo]:-}
-        codegraph+="- \`$repo\` → projectPath \`<workspace>/$rpath\`"$'\n'
+      if (( ${FEFO_R_VAULT[$repo]:-1} )); then
+        slug=$(_fefo_slug "$repo")
+        vaults+="   - \`$repo\` → \`docs/vault/$slug-vault/00-INDEX.md\`"$'\n'
       fi
     done
-  fi
-
-  local vault=""
-  if (( ${FEFO_VAULT:-0} )); then
-    vault="; MCP server \`vault\`, \`codegraph_context\`/\`codegraph_search\` on notes"
+    vaults=${vaults%$'\n'}
   fi
 
   local model_policy
@@ -219,16 +203,23 @@ _fefo_gen_agents() {
   local parallel=${FEFO_PARALLEL:-4}
   local handoff="${FEFO_HANDOFF:-/var/tmp/fefo}/$(_fefo_slug "${FEFO_NAME}")"
 
-  content=${content//@@NAME@@/$name}
-  content=${content//@@REPO_TABLE@@/$repo_table}
-  content=${content//@@CODEGRAPH@@/$codegraph}
-  content=${content//@@VAULT@@/$vault}
-  content=${content//@@MODEL_POLICY@@/$model_policy}
-  content=${content//@@FALLBACK@@/$fallback}
-  content=${content//@@PARALLEL@@/$parallel}
-  content=${content//@@HANDOFF@@/$handoff}
-
-  print -r -- "$content"
+  # per-line render; drop lines left empty by empty placeholders
+  local -a out=()
+  local line trimmed
+  while IFS= read -r line || [[ -n $line ]]; do
+    trimmed=${line#"${line%%[![:space:]]*}"}; trimmed=${trimmed%"${trimmed##*[![:space:]]}"}
+    case $trimmed in
+      '@@REPO_TABLE@@') out+=("${(@f)repo_table}"); continue ;;
+      '@@VAULTS@@') [[ -n $vaults ]] && out+=("${(@f)vaults}"); continue ;;
+    esac
+    line=${line//@@NAME@@/$name}
+    line=${line//@@MODEL_POLICY@@/$model_policy}
+    line=${line//@@FALLBACK@@/$fallback}
+    line=${line//@@PARALLEL@@/$parallel}
+    line=${line//@@HANDOFF@@/$handoff}
+    out+=("$line")
+  done < "$tpl"
+  print -r -- "${(F)out}"
 }
 
 _fefo_gen_agents_local() {
@@ -265,13 +256,12 @@ _fefo_gen_vault_federation() {
   print -r -- ''
   print -r -- "Workspace: **$name**"
   print -r -- ''
-  print -r -- '| Repo | Path | Role | Stack | CodeGraph |'
-  print -r -- '|---|---|---|---|---|'
+  print -r -- '| Repo | Path | Role | Stack |'
+  print -r -- '|---|---|---|---|'
   local repo
   for repo in "${FEFO_REPOS[@]}"; do
     local role=${FEFO_R_ROLE[$repo]:-} stack=${FEFO_R_STACK[$repo]:-} rpath=${FEFO_R_PATH[$repo]:-}
-    local cg=off; (( ${FEFO_R_CG[$repo]:-0} )) && cg=on
-    print -r -- "| \`$repo\` | \`$rpath\` | \`$role\` | \`$stack\` | \`$cg\` |"
+    print -r -- "| \`$repo\` | \`$rpath\` | \`$role\` | \`$stack\` |"
   done
   print -r -- ''
   print -r -- '## Generated adapters'
@@ -303,7 +293,6 @@ _fefo_gen_vault_repo() {
   local repo=$1
   local role=${FEFO_R_ROLE[$repo]:-} stack=${FEFO_R_STACK[$repo]:-} rpath=${FEFO_R_PATH[$repo]:-}
   local test=${FEFO_R_TEST[$repo]:-} lint=${FEFO_R_LINT[$repo]:-} build=${FEFO_R_BUILD[$repo]:-} run=${FEFO_R_RUN[$repo]:-}
-  local cg=off; (( ${FEFO_R_CG[$repo]:-0} )) && cg=on
   local slug=$(_fefo_slug "$repo")
   print -r -- "# $repo"
   print -r -- ''
@@ -312,7 +301,6 @@ _fefo_gen_vault_repo() {
   print -r -- "| Role | \`$role\` |"
   print -r -- "| Stack | \`$stack\` |"
   print -r -- "| Path | \`$rpath\` |"
-  print -r -- "| CodeGraph | \`$cg\` |"
   [[ -n $test ]] && print -r -- "| Test | \`$test\` |"
   [[ -n $lint ]] && print -r -- "| Lint | \`$lint\` |"
   [[ -n $build ]] && print -r -- "| Build | \`$build\` |"
@@ -355,39 +343,6 @@ _fefo_gen_vault_decisions() {
   fi
 }
 
-_fefo_gen_codegraph_readme() {
-  emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail
-  print -r -- '# CodeGraph'
-  print -r -- ''
-  print -r -- 'FEFO indexes each federated repository separately. Run:'
-  print -r -- ''
-  print -r -- '```sh'
-  print -r -- './bin/fefo index'
-  print -r -- '```'
-  print -r -- ''
-  print -r -- "Indexes live in each repository's \`.codegraph/\` directory."
-  print -r -- ''
-  if (( ${#FEFO_REPOS[@]} > 0 )); then
-    print -r -- '## Federated indexes'
-    print -r -- ''
-    local repo
-    for repo in "${FEFO_REPOS[@]}"; do
-      if (( ${FEFO_R_CG[$repo]:-0} )); then
-        local rpath=${FEFO_R_PATH[$repo]:-}
-        print -r -- "- \`$repo\` → \`$rpath/.codegraph/\`"
-      fi
-    done
-    local -a disabled=()
-    for repo in "${FEFO_REPOS[@]}"; do
-      (( ${FEFO_R_CG[$repo]:-0} )) || disabled+=("$repo")
-    done
-    if (( ${#disabled[@]} > 0 )); then
-      print -r -- ''
-      print -r -- "CodeGraph disabled for: ${(j:, :)disabled}."
-    fi
-    print -r -- ''
-  fi
-}
 
 _fefo_gen_browse_mcp() {
   emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail
@@ -421,7 +376,7 @@ _fefo_ensure_gitignore() {
   emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail
   local ws=$FEFO_WS
   local gi="$ws/.gitignore"
-  local -a lines=('.env' '.env.*' '!.env*.example' '.codegraph/' '*.codegraph.lock')
+  local -a lines=('.env' '.env.*' '!.env*.example' '/docs/vault/*-vault/' '/docs/vault/graph.json')
   local rn rp
   # repos nested inside the workspace are their own Git roots: keep them out of the workspace repo
   for rn in "${FEFO_REPOS[@]}"; do
@@ -444,7 +399,7 @@ _fefo_copy_skills() {
   local ws=$FEFO_WS home=${FEFO_HOME:-}
   [[ -z $home ]] && return 0
   local skill
-  for skill in codegraph vault-search; do
+  for skill in vault-search; do
     local src="$home/.agents/skills/$skill/SKILL.md"
     local dst="$ws/.agents/skills/$skill/SKILL.md"
     [[ -f $src ]] || continue
@@ -475,19 +430,6 @@ _fefo_gen_mcp_json() {
 
   # build server list in same order as opencode
   local -a srv=()
-  local cg_on=0
-  if (( ${FEFO_CODEGRAPH:-1} )); then
-    local repo
-    for repo in "${FEFO_REPOS[@]}"; do
-      if (( ${FEFO_R_CG[$repo]:-0} )); then cg_on=1; break; fi
-    done
-  fi
-  if (( cg_on )); then
-    srv+=('codegraph')
-  fi
-  if (( ${FEFO_VAULT:-0} )); then
-    srv+=('vault')
-  fi
   if (( ${FEFO_BROWSE:-0} )); then
     srv+=('browse')
   fi
@@ -503,12 +445,6 @@ _fefo_gen_mcp_json() {
     local s=${srv[$i]}
     local comma=''; (( i < ${#srv[@]} )) && comma=','
     case $s in
-      codegraph)
-        print -r -- "    \"codegraph\": {\"type\": \"stdio\", \"command\": \"codegraph\", \"args\": [\"serve\", \"--mcp\"]}$comma"
-        ;;
-      vault)
-        print -r -- "    \"vault\": {\"type\": \"stdio\", \"command\": \"codegraph\", \"args\": [\"serve\", \"--mcp\", \"--no-watch\", \"--path\", \"docs/vault\"]}$comma"
-        ;;
       browse)
         print -r -- "    \"browse\": {\"type\": \"stdio\", \"command\": \"zsh\", \"args\": [\".opencode/bin/browse-mcp\"]}$comma"
         ;;
@@ -567,7 +503,7 @@ _fefo_copy_claude_skills() {
   local ws=$FEFO_WS home=${FEFO_HOME:-}
   [[ -z $home ]] && return 0
   local skill
-  for skill in codegraph vault-search; do
+  for skill in vault-search; do
     local src="$home/.agents/skills/$skill/SKILL.md"
     local dst="$ws/.claude/skills/$skill/SKILL.md"
     [[ -f $src ]] || continue
@@ -600,10 +536,6 @@ _fefo_gen_all() {
     done
   fi
   _fefo_emit_once "docs/vault/decisions.md" _fefo_gen_vault_decisions
-  if [[ ! -f "$ws/.fefo/template" ]]; then
-    mkdir -p "$ws/codegraph"
-    _fefo_emit "codegraph/README.md" _fefo_gen_codegraph_readme
-  fi
   mkdir -p "$ws/.opencode/bin"
   _fefo_emit ".opencode/bin/mcp" _fefo_gen_mcp
   if (( ${FEFO_BROWSE:-0} )); then

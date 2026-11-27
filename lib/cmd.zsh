@@ -9,7 +9,9 @@ _fefo_usage() {
   emulate -L zsh
   setopt local_options extended_glob no_unset pipe_fail typeset_silent
   print -r -- "usage: fefo <command> [args]"
-  print -r -- "commands: init add remove sync status index doctor mcp model handoff graph agents version help"
+  print -r -- "commands: init add remove sync status vault doctor mcp model handoff graph agents version help"
+  print -r -- "graph --query TERM  search symbols, modules, routes, commits and notes in docs/vault/graph.json"
+  print -r -- "graph [--port N] [--open] [--out FILE]  open or write the local viewer"
 }
 
 _fefo_ws() {
@@ -54,10 +56,8 @@ _fefo_cmd_init() {
   local no_browse=0
   local force=0
   local yes=0
-  local no_index=0
   local ai_agents=0 default_agents=0
   local no_vault=0
-  local no_codegraph=0
   local no_claude=0
 
   while (( $# )); do
@@ -72,11 +72,9 @@ _fefo_cmd_init() {
       --no-browse) no_browse=1; shift ;;
       --force) force=1; shift ;;
       --yes) yes=1; shift ;;
-      --no-index) no_index=1; shift ;;
       --ai-agents) ai_agents=1; shift ;;
       --default-agents) default_agents=1; shift ;;
       --no-vault) no_vault=1; shift ;;
-      --no-codegraph) no_codegraph=1; shift ;;
       --no-claude) no_claude=1; shift ;;
       *) _fefo_die "unknown flag: $1"; return 2 ;;
     esac
@@ -109,18 +107,8 @@ _fefo_cmd_init() {
 
   # browse
   if (( no_browse )); then FEFO_BROWSE=0; fi
-  # codegraph
-  if (( no_codegraph )); then FEFO_CODEGRAPH=0; fi
-  # vault default: on if codegraph installed and codegraph on
-  if (( no_vault )); then
-    FEFO_VAULT=0
-  else
-    if (( FEFO_CODEGRAPH )) && whence -p codegraph >/dev/null 2>&1; then
-      FEFO_VAULT=1
-    else
-      FEFO_VAULT=0
-    fi
-  fi
+  # code vaults (default on)
+  if (( no_vault )); then FEFO_VAULT=0; fi
   if (( no_claude )); then
     FEFO_CLAUDE=0
   else
@@ -224,23 +212,16 @@ _fefo_cmd_init() {
   wrote=(${(M)${(f)sout}:#wrote *})
   print -r -- "fefo: wrote ${#wrote} files"
 
+  # code vaults
+  if (( ! no_vault )) && (( $+functions[_fefo_cmd_vault] )); then
+    _fefo_cmd_vault || _fefo_warn "vault generation failed"
+  fi
+
   # agents install
   if (( $+functions[_fefo_agents_install] )); then
     _fefo_agents_install "$FEFO_AGENTS" || _fefo_warn "agents install failed"
   else
     _fefo_die "agents lane unavailable: _fefo_agents_install not found"; return 1
-  fi
-
-  # copy skills
-  if [[ -d $FEFO_HOME/.agents/skills ]]; then
-    mkdir -p "$ws/.agents/skills"
-    cp -R "$FEFO_HOME/.agents/skills/codegraph" "$ws/.agents/skills/" 2>/dev/null
-    cp -R "$FEFO_HOME/.agents/skills/vault-search" "$ws/.agents/skills/" 2>/dev/null
-  fi
-
-  # index
-  if (( ! no_index )) && (( FEFO_CODEGRAPH )) && whence -p codegraph >/dev/null 2>&1; then
-    _fefo_cmd_index || true
   fi
 
   print -r -- "fefo: $name ready — next: opencode"
@@ -284,7 +265,7 @@ _fefo_init_add_repo() {
   FEFO_R_PATH[$name]=$rel
   FEFO_R_ROLE[$name]=$role
   FEFO_R_STACK[$name]=$stack
-  FEFO_R_CG[$name]=1
+  FEFO_R_VAULT[$name]=1
   FEFO_R_TEST[$name]=${REPLY_TEST:-}
   FEFO_R_LINT[$name]=${REPLY_LINT:-}
   FEFO_R_BUILD[$name]=${REPLY_BUILD:-}
@@ -300,13 +281,11 @@ _fefo_cmd_add() {
   local name=""
   local role=""
   local stack=""
-  local no_cg=0
   while (( $# )); do
     case $1 in
       --name) name=$2; shift 2 ;;
       --role) role=$2; shift 2 ;;
       --stack) stack=$2; shift 2 ;;
-      --no-codegraph) no_cg=1; shift ;;
       *) 
         if [[ -z $rarg ]]; then rarg=$1; else _fefo_die "unexpected arg: $1"; return 2; fi
         shift
@@ -353,7 +332,6 @@ _fefo_cmd_add() {
         # update
         FEFO_R_ROLE[$name]=$role
         FEFO_R_STACK[$name]=$stack
-        if (( no_cg )); then FEFO_R_CG[$name]=0; else FEFO_R_CG[$name]=1; fi
         FEFO_R_TEST[$name]=${REPLY_TEST:-}
         FEFO_R_LINT[$name]=${REPLY_LINT:-}
         FEFO_R_BUILD[$name]=${REPLY_BUILD:-}
@@ -369,7 +347,7 @@ _fefo_cmd_add() {
   FEFO_R_PATH[$name]=$rel
   FEFO_R_ROLE[$name]=$role
   FEFO_R_STACK[$name]=$stack
-  if (( no_cg )); then FEFO_R_CG[$name]=0; else FEFO_R_CG[$name]=1; fi
+  FEFO_R_VAULT[$name]=1
   FEFO_R_TEST[$name]=${REPLY_TEST:-}
   FEFO_R_LINT[$name]=${REPLY_LINT:-}
   FEFO_R_BUILD[$name]=${REPLY_BUILD:-}
@@ -406,7 +384,7 @@ _fefo_cmd_remove() {
     [[ $r == $name ]] || new+=("$r")
   done
   FEFO_REPOS=("${new[@]}")
-  unset "FEFO_R_PATH[$name]" "FEFO_R_ROLE[$name]" "FEFO_R_STACK[$name]" "FEFO_R_CG[$name]" "FEFO_R_TEST[$name]" "FEFO_R_LINT[$name]" "FEFO_R_BUILD[$name]" "FEFO_R_RUN[$name]"
+  unset "FEFO_R_PATH[$name]" "FEFO_R_ROLE[$name]" "FEFO_R_STACK[$name]" "FEFO_R_VAULT[$name]" "FEFO_R_TEST[$name]" "FEFO_R_LINT[$name]" "FEFO_R_BUILD[$name]" "FEFO_R_RUN[$name]"
 
   _fefo_manifest_save "$ws/.fefo/workspace.zsh" || return 1
   _fefo_cmd_sync || return 1
@@ -465,7 +443,6 @@ _fefo_cmd_status() {
   print -r -- "handoff: $FEFO_HANDOFF"
   local -a onoff=(off on)
   print -r -- "browse: ${onoff[FEFO_BROWSE+1]}"
-  print -r -- "codegraph: ${onoff[FEFO_CODEGRAPH+1]}"
   print -r -- "vault: ${onoff[FEFO_VAULT+1]}"
   print -r -- "claude: ${onoff[FEFO_CLAUDE+1]}"
   print -r -- "agents: $FEFO_AGENTS"
@@ -475,9 +452,8 @@ _fefo_cmd_status() {
     local p=$ws/${FEFO_R_PATH[$r]}
     local exists="missing"
     [[ -d $p ]] && exists="ok"
-    local idx="no-index"
-    [[ -d $p/.codegraph ]] && idx="indexed"
-    print -r -- "  $r: ${FEFO_R_PATH[$r]} ($exists, $idx) stack=${FEFO_R_STACK[$r]} role=${FEFO_R_ROLE[$r]}"
+    local vstate=$(_fefo_vault_state "$r")
+    print -r -- "  $r: ${FEFO_R_PATH[$r]} ($exists) stack=${FEFO_R_STACK[$r]} role=${FEFO_R_ROLE[$r]} vault $vstate"
   done
   print -r -- "mcps: ${${FEFO_MCPS[*]}:-none}"
   if whence -p opencode >/dev/null 2>&1; then
@@ -487,118 +463,27 @@ _fefo_cmd_status() {
   fi
 }
 
-# ---------- index ----------
-_fefo_cmd_index() {
+# ---------- vault state ----------
+# prints fresh|stale|none for repo REPO (code vault docs/vault/<slug>-vault vs HEAD stamp)
+_fefo_vault_state() {
   emulate -L zsh
   setopt local_options extended_glob no_unset pipe_fail typeset_silent
-  local vault=0
-  local -a targets=()
-  while (( $# )); do
-    case $1 in
-      --vault) vault=1; shift ;;
-      *) targets+=("$1"); shift ;;
-    esac
-  done
-
-  local ws
-  ws=$(_fefo_ws) || return 1
-  _fefo_manifest_load "$ws/.fefo/workspace.zsh" || return 1
-  FEFO_WS=$ws; export FEFO_WS
-
-  if (( vault )); then
-    if (( $+functions[_fefo_index_vault] )); then
-      _fefo_index_vault
-    else
-      _fefo_die "graph lane unavailable: _fefo_index_vault not found"; return 1
-    fi
-    return 0
-  fi
-
-  if ! whence -p codegraph >/dev/null 2>&1; then
-    _fefo_die "codegraph not found"
-    return 1
-  fi
-
-  # build target list
-  local -a tlist=()
-  if (( ${#targets} == 0 )); then
-    local r
-    for r in "${FEFO_REPOS[@]}"; do
-      if (( FEFO_R_CG[$r] )); then
-        tlist+=("$r")
-      fi
-    done
-  else
-    tlist=("${targets[@]}")
-  fi
-
-  local log=${XDG_CACHE_HOME:-$HOME/.cache}/fefo/$(_fefo_slug "$FEFO_NAME")/index.log
-  mkdir -p "${log:h}"
-  # newer CodeGraph indexes during init; older needs -i
-  local initflag=""
-  codegraph init --help 2>&1 | grep -q -- '--index' && initflag=-i
-  local failed=0
-
-  local t
-  for t in "${tlist[@]}"; do
-    local name="" dir=""
-    if [[ $t == *=* ]]; then
-      name=${t%%=*}
-      dir=${t#*=}
-    else
-      if [[ -d $t ]]; then
-        dir=$t
-        name=${t:t}
-      else
-        # treat as repo name
-        name=$t
-        if [[ -n ${FEFO_R_PATH[$name]:-} ]]; then
-          dir=$ws/${FEFO_R_PATH[$name]}
-        else
-          _fefo_die "unknown repo: $name"; continue
-        fi
-      fi
-    fi
-    if [[ $dir != /* ]]; then dir=$PWD/$dir; fi
-    dir=${dir:A}
-    [[ -d $dir ]] || { _fefo_die "directory not found: $dir"; continue; }
-
-    # worktree seeding
-    if [[ ! -d $dir/.codegraph ]]; then
-      local common main
-      common=$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null)
-      if [[ -n $common && $common != .git && $common != */.git ]]; then
-        # common may be relative
-        [[ $common != /* ]] && common=$dir/$common
-        main=${common:h}
-        if [[ -d $main/.codegraph ]]; then
-          cp -R "$main/.codegraph" "$dir/.codegraph"
-        fi
-      elif [[ -n $common && $common == */.git ]]; then
-        main=${common%/.git}
-        [[ -d $main/.codegraph && $main != $dir ]] && cp -R "$main/.codegraph" "$dir/.codegraph"
-      fi
-    fi
-
-    local start=$EPOCHSECONDS verb=synced rc
-    print -r -- "== $(strftime '%Y-%m-%dT%H:%M:%S' $EPOCHSECONDS) $name $dir" >> "$log"
-    if [[ ! -d $dir/.codegraph ]]; then
-      verb=indexed
-      codegraph init $initflag "$dir" >> "$log" 2>&1
-    else
-      codegraph sync "$dir" >> "$log" 2>&1
-    fi
-    rc=$?
-    if (( rc == 0 )); then
-      print -r -- "fefo: $verb $name ($(( EPOCHSECONDS - start ))s)"
-    else
-      print -r -- "fefo: index $name failed — see $log"
-      tail -n 5 "$log"
-      failed=1
-    fi
-  done
-  return $failed
+  local repo=$1
+  local ws=${FEFO_WS:-}
+  if [[ -z $ws ]]; then ws=$(_fefo_root 2>/dev/null) || ws=$PWD; fi
+  local slug=$(_fefo_slug "$repo")
+  local out=$ws/docs/vault/$slug-vault
+  if [[ ! -d $out ]]; then print -r -- none; return 0; fi
+  local rpath=$ws/${FEFO_R_PATH[$repo]:-.}
+  local head=""
+  head=$(git -C "$rpath" rev-parse HEAD 2>/dev/null) || head=""
+  local stamp=""
+  [[ -f $out/.stamp ]] && stamp=$(<"$out/.stamp")
+  head=${head//[[:space:]]/}
+  stamp=${stamp//[[:space:]]/}
+  if [[ -n $head && $stamp == $head ]]; then print -r -- fresh; else print -r -- stale; fi
 }
+
 
 # ---------- mcp ----------
 _fefo_cmd_mcp() {
@@ -977,13 +862,6 @@ _fefo_cmd_doctor() {
     print -r -- "✗ git"; ((fails++))
   fi
 
-  # codegraph
-  if whence -p codegraph >/dev/null 2>&1; then
-    print -r -- "✓ codegraph"
-  else
-    print -r -- "✗ codegraph"; ((fails++))
-  fi
-
   # browse
   if whence -p browse >/dev/null 2>&1; then
     print -r -- "✓ browse"
@@ -1035,6 +913,10 @@ _fefo_cmd_doctor() {
           print -r -- "✗ repo $r path missing"
           ((fails++))
         fi
+        # code vault freshness
+        if [[ $(_fefo_vault_state "$r") == stale ]]; then
+          print -r -- "! vault stale for $r — fefo vault --changed"
+        fi
       done
     else
       print -r -- "✗ manifest parses"; ((fails++))
@@ -1071,6 +953,8 @@ _fefo_cmd_doctor() {
   unfunction _fefo_legacy
   [[ -z $ws ]] && (( legacy > 0 )) && ((fails++))
 
+  print -r -- "FEFO itself: reinstall with the built-in installer: curl -fsSL https://raw.githubusercontent.com/campanafernando/FEFO/main/install.sh | sh"
+
   if (( fails > 0 )); then
     return 1
   fi
@@ -1080,6 +964,8 @@ _fefo_cmd_doctor() {
 # ---------- placeholders for other lanes ----------
 (( $+functions[_fefo_gen_all] )) || _fefo_gen_all() { _fefo_die "gen lane unavailable: _fefo_gen_all not found"; return 1; }
 (( $+functions[_fefo_agents_install] )) || _fefo_agents_install() { _fefo_die "agents lane unavailable: _fefo_agents_install not found"; return 1; }
-(( $+functions[_fefo_index_vault] )) || _fefo_index_vault() { _fefo_die "graph lane unavailable: _fefo_index_vault not found"; return 1; }
 (( $+functions[_fefo_cmd_graph] )) || _fefo_cmd_graph() { _fefo_die "graph lane unavailable: _fefo_cmd_graph not found"; return 1; }
 (( $+functions[_fefo_cmd_agents] )) || _fefo_cmd_agents() { _fefo_die "agents lane unavailable: _fefo_cmd_agents not found"; return 1; }
+(( $+functions[_fefo_cmd_vault] )) || _fefo_cmd_vault() { _fefo_die "vault lane unavailable: _fefo_cmd_vault not found"; return 1; }
+# lane vault (lib/vault.zsh) provides _fefo_cmd_vault; sourced last, overrides the placeholder
+if [[ -f ${FEFO_HOME:-}/lib/vault.zsh ]]; then source "${FEFO_HOME}/lib/vault.zsh"; fi

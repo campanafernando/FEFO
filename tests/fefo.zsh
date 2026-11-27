@@ -17,7 +17,7 @@ export XDG_DATA_HOME=$HOME/.local/share
 export FEFO_SKIP_UPDATE_CHECK=1
 export FEFO_YES=1
 export FEFO_HOME=$FEFO_ROOT
-FEFO_TEST_LOG=$tmp/codegraph.log
+FEFO_TEST_LOG=$tmp/fefo.log
 : > "$FEFO_TEST_LOG"
 export FEFO_TEST_LOG
 SHIMS=$FEFO_ROOT/tests/shims
@@ -79,7 +79,7 @@ else
 fi
 scan=(${scan:#(tests/*|./tests/*)})
 
-# no python/jq/node calls outside tests (except vault-graph.mjs and graph.zsh codegraph-node line)
+# no python/jq/node calls outside tests
 bad=$(cd "$FEFO_ROOT" && grep -n -E 'python3| jq |(^|[^_a-zA-Z])node ' -- ${scan:#*vault-graph.mjs} 2>/dev/null | grep -v 'graph.zsh.*codegraph.*node' || true)
 if [[ -z "$bad" ]]; then
   ((PASS++)); print "PASS no python/jq/node calls"
@@ -97,14 +97,14 @@ else
 fi
 
 # no stray files in lib/
-t "lib has only known files" '[[ -z "$(ls $FEFO_ROOT/lib | grep -v -E "^(core|manifest|scan|gen|cmd|graph|agents)\.zsh$|^vault-graph\.mjs$")" ]]'
+t "lib has only known files" '[[ -z "$(ls $FEFO_ROOT/lib | grep -v -E "^(core|manifest|scan|gen|cmd|graph|agents|vault)\.zsh$")" ]]'
 
 # init scan cheap
 ws=$tmp/ws_scan; newws "$ws"
 mkrepo "$ws/api" django
 mkrepo "$ws/web" next
 cd "$ws"
-t "init scan cheap" 'fefo init --name "ScanWS" --cheap --no-index --yes >/dev/null 2>&1'
+t "init scan cheap" 'fefo init --name "ScanWS" --cheap --yes >/dev/null 2>&1'
 t "manifest has api" 'grep -q "api" .fefo/workspace.zsh'
 t "manifest has web" 'grep -q "web" .fefo/workspace.zsh'
 t "opencode no default_agent" '! grep -q "default_agent" opencode.json'
@@ -113,7 +113,7 @@ t "opencode no default_agent" '! grep -q "default_agent" opencode.json'
 ws=$tmp/ws_rt; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
-t "init rt" 'fefo init --name RT --cheap --no-index --yes >/dev/null 2>&1'
+t "init rt" 'fefo init --name RT --cheap --yes >/dev/null 2>&1'
 cp .fefo/workspace.zsh "$tmp/before.manifest"
 t "sync rt" 'fefo sync >/dev/null 2>&1'
 t "manifest stable" 'cmp -s "$tmp/before.manifest" .fefo/workspace.zsh'
@@ -122,34 +122,34 @@ t "manifest stable" 'cmp -s "$tmp/before.manifest" .fefo/workspace.zsh'
 ws=$tmp/ws_br; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
-t "init browse on" 'fefo init --name B --cheap --no-index --yes >/dev/null 2>&1'
-t "opencode has codegraph server" 'grep -q "\"codegraph\"" opencode.json'
+t "init browse on" 'fefo init --name B --cheap --yes >/dev/null 2>&1'
+t "opencode no external graph server" '! grep -q "\"codegraph\"" opencode.json'
 t "opencode has browse" 'grep -q "browse" opencode.json'
 
 ws=$tmp/ws_nobr; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
-t "init no-browse" 'fefo init --name NB --cheap --no-browse --no-index --yes >/dev/null 2>&1'
+t "init no-browse" 'fefo init --name NB --cheap --no-browse --yes >/dev/null 2>&1'
 t "opencode no browse" '! grep -q "browse" opencode.json'
 
 # AGENTS placeholders cheap/default
 ws=$tmp/ws_ch; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
-t "init cheap agents" 'fefo init --name CA --cheap --no-index --yes >/dev/null 2>&1'
+t "init cheap agents" 'fefo init --name CA --cheap --yes >/dev/null 2>&1'
 t "cheap text" 'grep -qi "cheap" AGENTS.md'
 
 ws=$tmp/ws_def; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
-t "init default agents" 'fefo init --name DA --model opencode-go/beam-free --no-index --yes >/dev/null 2>&1'
+t "init default agents" 'fefo init --name DA --model opencode-go/beam-free --yes >/dev/null 2>&1'
 t "default text" 'grep -qi "default" AGENTS.md'
 
 # sync idempotent
 ws=$tmp/ws_sync; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
-fefo init --name S --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name S --cheap --yes >/dev/null 2>&1
 find . -type f -not -path './.git/*' | sort | xargs sha256sum > "$tmp/before_sync.txt" 2>/dev/null
 fefo sync >/dev/null 2>&1
 find . -type f -not -path './.git/*' | sort | xargs sha256sum > "$tmp/after_sync.txt" 2>/dev/null
@@ -159,29 +159,22 @@ t "sync idempotent" 'cmp -s "$tmp/before_sync.txt" "$tmp/after_sync.txt"'
 ws=$tmp/ws_chk; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
-fefo init --name CHK --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name CHK --cheap --yes >/dev/null 2>&1
 t "sync check drift" 'printf x >> opencode.json; fefo sync --check >/dev/null 2>&1; [[ $? -eq 3 ]]'
 
 # add/remove repo
 ws=$tmp/ws_ar; newws "$ws"
 cd "$ws"
-t "init addrepo base" 'fefo init --name AR --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1'
+t "init addrepo base" 'fefo init --name AR --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1'
 t "add web" 'fefo add "$REPOS/web" >/dev/null 2>&1'
 t "manifest has web after add" 'grep -q "web" .fefo/workspace.zsh'
 t "remove web" 'fefo remove web >/dev/null 2>&1'
 t "manifest no web after remove" '! grep -q "web" .fefo/workspace.zsh'
 
-# codegraph=off
-ws=$tmp/ws_cgoff; newws "$ws"
-cd "$ws"
-fefo init --name CG --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
-t "add web no-cg" 'fefo add "$REPOS/web" --no-codegraph >/dev/null 2>&1'
-t "cg off readme" 'grep -qi "web" codegraph/README.md'
-
 # mcp add local/remote/list/remove
 ws=$tmp/ws_mcp; newws "$ws"
 cd "$ws"
-fefo init --name M --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name M --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 t "mcp add local" 'fefo mcp add pg -- echo hi >/dev/null 2>&1'
 t "mcp list" '[[ $(fefo mcp list 2>&1) == *pg* ]]'
 t "opencode has pg" 'grep -q "pg" opencode.json'
@@ -194,7 +187,7 @@ t "opencode no pg" '! grep -q "\"pg\"" opencode.json'
 ws=$tmp/ws_model; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
-fefo init --name MD --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name MD --cheap --yes >/dev/null 2>&1
 t "model show" 'fefo model show >/dev/null 2>&1'
 t "model cheap" 'fefo model cheap >/dev/null 2>&1'
 t "model fallback auto" 'fefo model fallback auto >/dev/null 2>&1'
@@ -204,33 +197,17 @@ t "model fallback id" 'fefo model fallback opencode-go/beam-free >/dev/null 2>&1
 ws=$tmp/ws_handoff; newws "$ws"
 cd "$ws"
 export FEFO_HANDOFF=$tmp/handoff
-fefo init --name "Hand$$" --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name "Hand$$" --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 t "handoff create" 'fefo handoff t a b >/dev/null 2>&1'
 t "handoff readme" '[[ -f $tmp/handoff/hand$$/t/README.md ]]'
 t "handoff lanes" '[[ -d $tmp/handoff/hand$$/t/a && -d $tmp/handoff/hand$$/t/b ]]'
 t "handoff status" '[[ $(fefo handoff t --status 2>&1) == *"| no |"* ]]'
 unset FEFO_HANDOFF
 
-# index args incl worktree seeding
-ws=$tmp/ws_index; newws "$ws"
-mkdir -p "$REPOS/api/.codegraph"
-cd "$ws"
-t "init index base" 'fefo init --name I --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1'
-: > "$FEFO_TEST_LOG"
-t "index all" 'fefo index >/dev/null 2>&1'
-t "index log has api" 'grep -q "api\|'"$REPOS/api"'" "$FEFO_TEST_LOG"'
-# worktree
-git -C "$REPOS/api" worktree add --detach "$tmp/wtapi" HEAD >/dev/null 2>&1
-rm -rf "$tmp/wtapi/.codegraph"
-: > "$FEFO_TEST_LOG"
-t "index worktree" 'fefo index "api=$tmp/wtapi" >/dev/null 2>&1'
-t "worktree seeded" '[[ -d "$tmp/wtapi/.codegraph" ]]'
-t "index log has path" 'grep -q "$tmp/wtapi" "$FEFO_TEST_LOG"'
-
 # doctor flags legacy
 ws=$tmp/ws_doc; newws "$ws"
 cd "$ws"
-fefo init --name D --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name D --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 mkdir -p tools .claude .cursor .opencode/agents
 printf '' > tools/fefo.py
 printf '{}' > .fefo/workspace.json
@@ -249,7 +226,7 @@ touch "$ws/.fefo/template"
 cp "$FEFO_ROOT/AGENTS.md" "$ws/AGENTS.md"
 hash_before=$(sha256sum < "$ws/AGENTS.md")
 cd "$ws"
-t "init template" 'fefo init --name TPL --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1'
+t "init template" 'fefo init --name TPL --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1'
 hash_after=$(sha256sum < "$ws/AGENTS.md")
 t "template AGENTS.md exists" '[[ -f .fefo/AGENTS.md ]]'
 t "bootstrap AGENTS.md untouched" '[[ "$hash_before" == "$hash_after" ]]'
@@ -257,67 +234,62 @@ t "bootstrap AGENTS.md untouched" '[[ "$hash_before" == "$hash_after" ]]'
 # graph --out
 ws=$tmp/ws_graph; newws "$ws"
 cd "$ws"
-fefo init --name G --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name G --cheap --yes >/dev/null 2>&1
 mkdir -p docs/vault
 printf '%s\n' '# Sample' '' 'See [[other]] and [x](other.md)' > docs/vault/sample.md
 printf '%s\n' '# Other' > docs/vault/other.md
+fefo vault --force >/dev/null 2>&1
 t "graph out" 'fefo graph --out "$tmp/know-graph.html" >/dev/null 2>&1'
 t "graph html has node id" 'grep -q "sample.md" "$tmp/know-graph.html"'
-# vault graph json
-t "index vault" 'fefo index --vault >/dev/null 2>&1'
-t "vault graph json exists" '[[ -f docs/vault/.codegraph/vault-graph.json ]]'
-t "vault graph json nodes" 'grep -q "\"nodes\"" docs/vault/.codegraph/vault-graph.json'
-t "vault graph json edges" 'grep -q "\"edges\"" docs/vault/.codegraph/vault-graph.json'
-t "vault graph json balanced" '[[ $(tr -cd "{" < docs/vault/.codegraph/vault-graph.json | wc -c) -eq $(tr -cd "}" < docs/vault/.codegraph/vault-graph.json | wc -c) ]]'
-t "vault headings have labels" '! grep -q "\"kind\":\"heading\",\"label\":\"\"" docs/vault/.codegraph/vault-graph.json'
-# CodeGraph's MCP connect-time catch-up deletes rows of unparsed files: the loader must not write `files`
-t "vault loader writes no files rows" '! grep -q "INSERT INTO files" "$FEFO_ROOT/lib/vault-graph.mjs"'
+t "graph query finds note" '[[ $(fefo graph --query Sample) == *"heading"* ]]'
+# index command removed
+t "index command removed" '! fefo index --vault >/dev/null 2>&1'
 
 # agents --default copies agents
 ws=$tmp/ws_agents2; newws "$ws"
 cd "$ws"
-fefo init --name A --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name A --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 t "agents default" 'fefo agents --default --force >/dev/null 2>&1'
 t "agents copied" '[[ -n "$(ls .opencode/agents/*.md 2>/dev/null)" ]]'
 
-# FEFO ships no installer
-t "no install.zsh or share/" '[[ ! -e $FEFO_ROOT/install.zsh && ! -e $FEFO_ROOT/share ]]'
+# FEFO keeps its own installer (no duplicated installer logic elsewhere)
+t "installer files present" '[[ -f $FEFO_ROOT/install.sh && -f $FEFO_ROOT/install.zsh && -f $FEFO_ROOT/share/fefo.zsh ]]'
 
 # Claude Code files (claude on|off)
 ws=$tmp/ws_claude; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
 # add a remote mcp with env var to test rewriting
-fefo init --name CL --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name CL --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 fefo mcp add plane --url https://plane.example/mcp --header "Authorization=Bearer {env:PLANE_TOKEN}" >/dev/null 2>&1
 t "claude CLAUDE.md exists" '[[ -f CLAUDE.md ]]'
 t "claude CLAUDE.md imports" 'grep -q "@AGENTS.md" CLAUDE.md && grep -q "@AGENTS.local.md" CLAUDE.md'
 t "claude mcp json exists" '[[ -f .mcp.json ]]'
-t "claude mcp same names" 'grep -q "codegraph" .mcp.json && grep -q "plane" .mcp.json'
+t "claude mcp same names" 'grep -q "plane" .mcp.json && ! grep -q "\"codegraph\"" .mcp.json'
 t "claude mcp env rewritten" 'grep -q "\${PLANE_TOKEN}" .mcp.json'
-t "claude skills exist" '[[ -f .claude/skills/codegraph/SKILL.md && -f .claude/skills/vault-search/SKILL.md ]]'
+t "claude skills exist" '[[ -f .claude/skills/vault-search/SKILL.md ]]'
 
 # --no-claude writes none
 ws=$tmp/ws_noclaude; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
-t "init no-claude" 'fefo init --name NCL --repo "$REPOS/api" --cheap --no-claude --no-index --yes >/dev/null 2>&1'
+t "init no-claude" 'fefo init --name NCL --repo "$REPOS/api" --cheap --no-claude --yes >/dev/null 2>&1'
 t "no-claude no CLAUDE.md" '[[ ! -f CLAUDE.md ]]'
 t "no-claude no .mcp.json" '[[ ! -f .mcp.json ]]'
-t "no-claude no skills" '[[ ! -f .claude/skills/codegraph/SKILL.md ]]'
+t "no-claude no skills" '[[ ! -f .claude/skills/vault-search/SKILL.md ]]'
 
 # template checkout claude paths
 ws=$tmp/ws_tplclaude; newws "$ws"
 mkdir -p "$ws/.fefo"; touch "$ws/.fefo/template"
 cp "$FEFO_ROOT/AGENTS.md" "$ws/AGENTS.md"
 cd "$ws"
-fefo init --name TPLC --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name TPLC --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 t "template CLAUDE.md uses .fefo" 'grep -q "@.fefo/AGENTS.md" CLAUDE.md'
 
 # doctor: claude wrappers not flagged; legacy .claude/agents flagged
 ws=$tmp/ws_doc2; newws "$ws"
 cd "$ws"
-fefo init --name D2 --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name D2 --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 mkdir -p .claude/agents .cursor
 DOCOUT2=$(fefo doctor 2>&1)
 t "doctor flags .claude/agents" 'print -r -- "$DOCOUT2" | grep -q ".claude/agents"'
@@ -329,7 +301,7 @@ export FEFO_HANDOFF=$tmp/handoff
 # gitignore without trailing newline
 ws=$tmp/ws_gi; newws "$ws"; cd "$ws"
 printf '/keep/' > .gitignore
-fefo init --name GI --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name GI --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 t "gitignore missing newline preserved" 'grep -Fxq "/keep/" .gitignore'
 t "tracked .gitignore ends with newline" '[[ -z $(tail -c1 "$FEFO_ROOT/.gitignore") ]]'
 
@@ -341,14 +313,14 @@ t "doctor flags legacy without workspace" 'print -r -- "$LEGOUT" | grep -q "work
 
 # claude off stale files
 ws=$tmp/ws_coff; newws "$ws"; cd "$ws"
-fefo init --name CO --repo "$REPOS/api" --cheap --no-index --no-claude --yes >/dev/null 2>&1
+fefo init --name CO --repo "$REPOS/api" --cheap --no-claude --yes >/dev/null 2>&1
 touch CLAUDE.md
 COOUT=$(fefo doctor 2>&1)
 t "doctor warns claude off stale file" 'print -r -- "$COOUT" | grep -q "claude off but CLAUDE.md exists" && [[ -f CLAUDE.md ]]'
 
 # model default exact id / non-TTY query
 ws=$tmp/ws_md; newws "$ws"; cd "$ws"
-fefo init --name MD --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name MD --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 t "model default exact id" 'fefo model default opencode-go/beam-free </dev/null >/dev/null 2>&1 && fefo model show | grep -q "submodel: opencode-go/beam-free"'
 t "model default unknown non-TTY fails" '! fefo model default zzz-nope </dev/null >/dev/null 2>&1'
 
@@ -363,7 +335,7 @@ t "cmd.zsh no-claude arm split" '! grep -q "no_claude=1; shift ;;.*\*)" "$FEFO_R
 
 # doctor finds ponytail in config
 ws=$tmp/ws_pt; newws "$ws"; cd "$ws"
-fefo init --name PT --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
+fefo init --name PT --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
 mkdir -p "$XDG_CONFIG_HOME/opencode"; print '{"plugin":["@dietrichgebert/ponytail"]}' > "$XDG_CONFIG_HOME/opencode/opencode.json"
 PTOUT=$(fefo doctor 2>&1)
 t "doctor ponytail from config" 'print -r -- "$PTOUT" | grep -q "✓ ponytail plugin"'
@@ -376,9 +348,31 @@ if [[ -n "${FEFO_TEST_OPENCODE:-}" && -x "${FEFO_TEST_OPENCODE}" ]]; then
   ws=$tmp/ws_real; newws "$ws"
   mkrepo "$ws/api" django
   cd "$ws"
-  fefo init --name R --cheap --no-index --yes >/dev/null 2>&1
+  fefo init --name R --cheap --yes >/dev/null 2>&1
   t "real opencode debug config" '(cd "$tmp/ws_real" && "$FEFO_TEST_OPENCODE" debug config) >/dev/null 2>&1'
 fi
+
+# code vaults: init runs vault; opencode no vault server; @@VAULTS@@ line; no CodeGraph
+ws=$tmp/ws_cv; newws "$ws"
+mkrepo "$ws/api" django
+cd "$ws"
+fefo init --name CV --repo "$REPOS/api" --cheap --yes >/dev/null 2>&1
+t "no vault mcp server" '! grep -q "\"vault\"" opencode.json && ! grep -q "\"vault\"" .mcp.json'
+t "AGENTS vault line" 'grep -q "docs/vault/api-vault/00-INDEX.md" AGENTS.md'
+t "AGENTS no codegraph" '! grep -qi "codegraph" AGENTS.md'
+t "gitignore has *-vault" 'grep -Fxq "/docs/vault/*-vault/" .gitignore'
+t "gitignore has graph.json" 'grep -Fxq "/docs/vault/graph.json" .gitignore'
+if [[ -f $FEFO_ROOT/lib/vault.zsh ]]; then
+  t "init runs vault" '[[ -f docs/vault/api-vault/00-INDEX.md ]]'
+fi
+t "init builds graph" '[[ -f docs/vault/graph.json ]]'
+t "graph query works" '[[ -n $(fefo graph --query api) ]]'
+
+# legacy manifests still sync: old codegraph statements are ignored
+awk '{ if ($1=="repo") print $0 " codegraph=off"; else print }' "$ws/.fefo/workspace.zsh" > "$ws/.fefo/workspace.zsh.tmp"
+mv "$ws/.fefo/workspace.zsh.tmp" "$ws/.fefo/workspace.zsh"
+print -r -- 'codegraph on' >> "$ws/.fefo/workspace.zsh"
+t "legacy codegraph ignored" 'fefo sync >/dev/null 2>&1 && ! grep -qi codegraph AGENTS.md'
 
 print "PASS=$PASS FAIL=$FAIL"
 [[ $FAIL -eq 0 ]]

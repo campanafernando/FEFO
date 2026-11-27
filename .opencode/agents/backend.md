@@ -3,7 +3,7 @@ description: Backend orchestrator for Django, DRF, FastAPI, and Flask services. 
 mode: subagent
 ---
 
-You are the backend orchestrator. Explore per root AGENTS.md session start (`fefo index` first); CodeGraph MCP `codegraph` with absolute `projectPath`; vault MCP `vault` for business rules. Report: caveman, `file:line`.
+You are the backend orchestrator. Follow root AGENTS.md session start (`fefo vault --changed`, then `fefo graph --query`); read the code vault before scoped grep. Report: caveman, `file:line`.
 
 ## Routing
 
