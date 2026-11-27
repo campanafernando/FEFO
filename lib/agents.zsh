@@ -1,4 +1,4 @@
-# lib/agents.zsh — `fefo agents` (§13)
+# lib/agents.zsh — `fefo agents`: default set or AI-scoped
 
 _fefo_agents_fix_file() {
   emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail

@@ -283,7 +283,7 @@ t "agents copied" '[[ -n "$(ls .opencode/agents/*.md 2>/dev/null)" ]]'
 # FEFO ships no installer
 t "no install.zsh or share/" '[[ ! -e $FEFO_ROOT/install.zsh && ! -e $FEFO_ROOT/share ]]'
 
-# Claude Code CLI basic support (§16)
+# Claude Code files (claude on|off)
 ws=$tmp/ws_claude; newws "$ws"
 mkrepo "$ws/api" django
 cd "$ws"
@@ -326,42 +326,42 @@ t "doctor does not flag CLAUDE.md" '! print -r -- "$DOCOUT2" | grep -q "CLAUDE.m
 
 export FEFO_HANDOFF=$tmp/handoff
 
-# 2 gitignore without trailing newline
+# gitignore without trailing newline
 ws=$tmp/ws_gi; newws "$ws"; cd "$ws"
 printf '/keep/' > .gitignore
 fefo init --name GI --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
 t "gitignore missing newline preserved" 'grep -Fxq "/keep/" .gitignore'
 t "tracked .gitignore ends with newline" '[[ -z $(tail -c1 "$FEFO_ROOT/.gitignore") ]]'
 
-# 3 doctor on un-migrated legacy dir
+# doctor on an old-FEFO dir without a manifest
 ws=$tmp/ws_leg; newws "$ws"; mkdir -p "$ws/.fefo" "$ws/.cursor"; touch "$ws/.fefo/workspace.json"
 cd "$ws"
 LEGOUT=$(fefo doctor 2>&1); LEGRC=$?
 t "doctor flags legacy without workspace" 'print -r -- "$LEGOUT" | grep -q "workspace.json" && print -r -- "$LEGOUT" | grep -q "fefo init --force" && (( LEGRC == 1 ))'
 
-# 4 claude off stale files
+# claude off stale files
 ws=$tmp/ws_coff; newws "$ws"; cd "$ws"
 fefo init --name CO --repo "$REPOS/api" --cheap --no-index --no-claude --yes >/dev/null 2>&1
 touch CLAUDE.md
 COOUT=$(fefo doctor 2>&1)
 t "doctor warns claude off stale file" 'print -r -- "$COOUT" | grep -q "claude off but CLAUDE.md exists" && [[ -f CLAUDE.md ]]'
 
-# 5 model default exact id / non-TTY query
+# model default exact id / non-TTY query
 ws=$tmp/ws_md; newws "$ws"; cd "$ws"
 fefo init --name MD --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
 t "model default exact id" 'fefo model default opencode-go/beam-free </dev/null >/dev/null 2>&1 && fefo model show | grep -q "submodel: opencode-go/beam-free"'
 t "model default unknown non-TTY fails" '! fefo model default zzz-nope </dev/null >/dev/null 2>&1'
 
-# 6 model --global keeps other lines
+# model --global keeps other lines
 mkdir -p "$XDG_CONFIG_HOME/fefo"
 printf '%s\n' 'agents default' 'subagents default old/x' 'mine 1' > "$XDG_CONFIG_HOME/fefo/config.zsh"
 fefo model cheap --global >/dev/null 2>&1
 t "model --global keeps other lines" 'grep -qx "agents default" "$XDG_CONFIG_HOME/fefo/config.zsh" && grep -qx "mine 1" "$XDG_CONFIG_HOME/fefo/config.zsh" && grep -qx "subagents cheap" "$XDG_CONFIG_HOME/fefo/config.zsh" && ! grep -q "old/x" "$XDG_CONFIG_HOME/fefo/config.zsh"'
 
-# 7 cosmetic: no-claude arm on its own line
+# one case arm per line in cmd.zsh
 t "cmd.zsh no-claude arm split" '! grep -q "no_claude=1; shift ;;.*\*)" "$FEFO_ROOT/lib/cmd.zsh"'
 
-# 8 doctor ponytail from config, no opencode plugin list
+# doctor finds ponytail in config
 ws=$tmp/ws_pt; newws "$ws"; cd "$ws"
 fefo init --name PT --repo "$REPOS/api" --cheap --no-index --yes >/dev/null 2>&1
 mkdir -p "$XDG_CONFIG_HOME/opencode"; print '{"plugin":["@dietrichgebert/ponytail"]}' > "$XDG_CONFIG_HOME/opencode/opencode.json"
