@@ -16,11 +16,12 @@ uninstall=0
 from_dir=
 ai_agents=0
 default_agents=0
+explicit=0
 
 while (( $# > 0 )); do
   case $1 in
-    --dir) dir=$2; shift 2 ;;
-    --ref) ref=$2; shift 2 ;;
+    --dir) dir=$2; explicit=1; shift 2 ;;
+    --ref) ref=$2; explicit=1; shift 2 ;;
     --cheap) cheap=1; shift ;;
     --model) model_flag=$2; shift 2 ;;
     --fallback) fallback_flag=$2; shift 2 ;;
@@ -40,11 +41,11 @@ dry=0
 is-at-least 5.8 || { print "fefo: zsh >= 5.8 required (found $ZSH_VERSION)" >&2; exit 1; }
 
 script_dir=""
-if [[ -n ${0:-} ]]; then
-  script_dir=${0:A:h} 2>/dev/null || script_dir=""
+if [[ -f ${0:-} && ${0:t} == install.zsh ]]; then
+  script_dir=${0:A:h}
 fi
 in_place=0
-if [[ -z $from_dir && -n $script_dir && -f $script_dir/bin/fefo ]]; then
+if [[ -z $from_dir && $explicit == 0 && -n $script_dir && -f $script_dir/bin/fefo ]]; then
   in_place=1
 fi
 
@@ -128,7 +129,7 @@ if (( uninstall == 1 )); then
   fi
   rm -f "$_bin_dir/fefo"
   _remove_zshrc_block "$HOME/.zshrc"
-  if [[ ${dir:A} != ${script_dir:A} ]]; then
+  if [[ -z $script_dir || ${dir:A} != ${script_dir:A} ]]; then
     rm -rf "$dir"
   fi
   print "FEFO uninstalled."

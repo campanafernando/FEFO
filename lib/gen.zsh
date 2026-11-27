@@ -432,6 +432,7 @@ _fefo_ensure_gitignore() {
     printf '%s\n' "${lines[@]}" > "$gi"
     return 0
   fi
+  [[ -s $gi && -n $(tail -c1 "$gi") ]] && print >> "$gi"
   local l
   for l in "${lines[@]}"; do
     grep -Fxq -- "$l" "$gi" 2>/dev/null || printf '%s\n' "$l" >> "$gi"

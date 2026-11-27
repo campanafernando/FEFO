@@ -77,7 +77,8 @@ _fefo_cmd_init() {
       --default-agents) default_agents=1; shift ;;
       --no-vault) no_vault=1; shift ;;
       --no-codegraph) no_codegraph=1; shift ;;
-      --no-claude) no_claude=1; shift ;;      *) _fefo_die "unknown flag: $1"; return 2 ;;
+      --no-claude) no_claude=1; shift ;;
+      *) _fefo_die "unknown flag: $1"; return 2 ;;
     esac
   done
 
@@ -774,7 +775,13 @@ _fefo_cmd_model() {
       shift
       local query=${1:-}
       local picked
-      if [[ -n $query ]]; then
+      if [[ -n $query ]] && opencode models 2>/dev/null | grep -Fxq -- "$query"; then
+        picked=$query
+      elif [[ -n $query ]]; then
+        if [[ ! -t 0 ]]; then
+          _fefo_die "model '$query' not found and no TTY for the picker; use an exact id from: opencode models"
+          return 1
+        fi
         picked=$(_fefo_pick_model "$query") || { _fefo_die "no model selected"; return 1; }
       else
         picked=$(_fefo_pick_model) || { _fefo_die "no model selected"; return 1; }
@@ -809,11 +816,18 @@ _fefo_model_save() {
   if (( global )); then
     local file=${XDG_CONFIG_HOME:-$HOME/.config}/fefo/config.zsh
     mkdir -p "${file:h}"
-    # save only global-ish lines
+    local tmp=$file.tmp line
+    : > "$tmp"
+    if [[ -f $file ]]; then
+      while IFS= read -r line || [[ -n $line ]]; do
+        [[ ${${line## #}%% *} == (subagents|fallback) ]] || print -r -- "$line" >> "$tmp"
+      done < "$file"
+    fi
     {
-      print -r -- "subagents $FEFO_MODE $FEFO_SUBMODEL"
+      if [[ -n $FEFO_SUBMODEL ]]; then print -r -- "subagents $FEFO_MODE $FEFO_SUBMODEL"; else print -r -- "subagents $FEFO_MODE"; fi
       print -r -- "fallback $FEFO_FALLBACK"
-    } > "$file"
+    } >> "$tmp"
+    mv "$tmp" "$file"
   else
     _fefo_manifest_save "$FEFO_WS/.fefo/workspace.zsh"
   fi
@@ -978,7 +992,10 @@ _fefo_cmd_doctor() {
   fi
 
   # ponytail plugin
-  if opencode plugin list 2>/dev/null | grep -qi ponytail; then
+  local -a ptf=("${XDG_CONFIG_HOME:-$HOME/.config}"/opencode/opencode.json*(N))
+  if (( ${#ptf} )) && grep -qs ponytail "${ptf[@]}" \
+      || grep -qs ponytail "$PWD"/opencode.json "$PWD"/opencode.jsonc "$PWD"/.opencode/opencode.json \
+      ${ws:+"$ws"/opencode.json "$ws"/opencode.jsonc "$ws"/.opencode/opencode.json} 2>/dev/null; then
     print -r -- "✓ ponytail plugin"
   else
     print -r -- "! ponytail plugin missing (optional)"
@@ -1022,24 +1039,34 @@ _fefo_cmd_doctor() {
     else
       print -r -- "✗ manifest parses"; ((fails++))
     fi
+    if (( ! ${FEFO_CLAUDE:-1} )); then
+      local cf
+      for cf in CLAUDE.md .mcp.json .claude/skills; do
+        [[ -e $ws/$cf ]] && print -r -- "! claude off but $cf exists (remove it if unused)"
+      done
+    fi
   else
     print -r -- "! not in a workspace"
   fi
 
-  # legacy artifacts
-  if [[ -n $ws ]]; then
-    [[ -f $ws/tools/fefo.py ]] && print -r -- "! legacy tools/fefo.py present — remove it"
-    [[ -f $ws/.fefo/workspace.json ]] && print -r -- "! legacy .fefo/workspace.json present — run fefo init --force"
-    if [[ -f $ws/opencode.json ]] && grep -q '"default_agent"' "$ws/opencode.json" 2>/dev/null; then
-      print -r -- "! default_agent in opencode.json — remove it"
-    fi
-    [[ -d $ws/.cursor ]] && print -r -- "! .cursor/ present — remove"
-    [[ -f $ws/.github/copilot-instructions.md ]] && print -r -- "! .github/copilot-instructions.md present — remove"
-    [[ -d $ws/.claude/agents ]] && print -r -- "! .claude/agents/ present — remove"
-    [[ -d $ws/.claude/commands ]] && print -r -- "! .claude/commands/ present — remove"
-    [[ -f $ws/.claude/settings.json ]] && print -r -- "! .claude/settings.json present — remove"
-    [[ -f $ws/.opencode/agents/fefo.md ]] && print -r -- "! .opencode/agents/fefo.md present — remove"
+  # legacy artifacts (inspect $PWD when no workspace was found)
+  local lw=${ws:-$PWD} legacy=0
+  _fefo_legacy() { print -r -- "! legacy $1 present — $2"; (( legacy++ )); }
+  local hint="fefo init --force"
+  [[ -n $ws ]] && hint=remove
+  [[ -f $lw/tools/fefo.py ]] && _fefo_legacy tools/fefo.py "$hint"
+  [[ -f $lw/.fefo/workspace.json ]] && _fefo_legacy .fefo/workspace.json "fefo init --force"
+  if [[ -f $lw/opencode.json ]] && grep -q '"default_agent"' "$lw/opencode.json" 2>/dev/null; then
+    _fefo_legacy "default_agent in opencode.json" "$hint"
   fi
+  [[ -d $lw/.cursor ]] && _fefo_legacy ".cursor/" "$hint"
+  [[ -f $lw/.github/copilot-instructions.md ]] && _fefo_legacy .github/copilot-instructions.md "$hint"
+  [[ -d $lw/.claude/agents ]] && _fefo_legacy .claude/agents/ "$hint"
+  [[ -d $lw/.claude/commands ]] && _fefo_legacy .claude/commands/ "$hint"
+  [[ -f $lw/.claude/settings.json ]] && _fefo_legacy .claude/settings.json "$hint"
+  [[ -f $lw/.opencode/agents/fefo.md ]] && _fefo_legacy .opencode/agents/fefo.md "$hint"
+  unfunction _fefo_legacy
+  [[ -z $ws ]] && (( legacy > 0 )) && ((fails++))
 
   if (( fails > 0 )); then
     return 1
