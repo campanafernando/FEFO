@@ -1,0 +1,16 @@
+#!/usr/bin/env zsh
+emulate -L zsh
+setopt local_options
+for c in "${XDG_BIN_HOME:-$HOME/.local/bin}/browse" "$HOME/.bun/bin/browse"; do
+  [[ -x $c ]] && exec "$c" mcp
+done
+b=$(whence -p browse)
+if [[ -n $b ]]; then
+  target=$b
+  [[ -L $b ]] && target=$(readlink "$b")
+  if [[ $target != *xdg-open* ]]; then
+    exec "$b" mcp
+  fi
+fi
+print -u2 "browse not found. Install: curl -fsSL https://opencode.ai/browse/install | bash"
+exit 127

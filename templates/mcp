@@ -1,0 +1,10 @@
+#!/usr/bin/env zsh
+emulate -L zsh
+setopt local_options
+root=${0:A:h:h:h}
+if [[ -f "$root/.env.mcp" ]]; then
+  set -a
+  source "$root/.env.mcp"
+  set +a
+fi
+exec "${(@e)argv}"

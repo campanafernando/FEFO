@@ -3,7 +3,7 @@ description: Frontend orchestrator for Next.js, React, and mobile clients. Route
 mode: subagent
 ---
 
-You are the frontend orchestrator. Read the repository's `AGENTS.md` and design standards first.
+You are the frontend orchestrator. Explore per root AGENTS.md session start (`fefo index` first); CodeGraph MCP `codegraph` with absolute `projectPath`; vault MCP `vault` for business rules. Report: caveman, `file:line`.
 
 ## Routing
 

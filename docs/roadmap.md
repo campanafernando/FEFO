@@ -1,45 +1,38 @@
 # Roadmap
 
-## Shipped
+## Shipped (v2)
 
-- **v0.1** — manifest-driven generator, CodeGraph MCP per repository, modular
-  agents and skills, commands, Claude/Cursor/Copilot adapters, vault scaffolding,
-  `init`/`add`/`remove`/`sync`/`index`/`status`/`doctor`, MCP management.
-- **v0.2** — `opencode-fefo` plugin: tools, slash commands, permission gates,
-  smoke test against the current CLI.
-- **v0.3** — `opencode-zshell`: `fefo`, `cmg`, `doit` and `bng`; plugin first,
-  direct CLI fallback.
-- **v0.5** — `fefo build` adoption and OpenCode enrichment, separate installer,
-  cross-platform helpers, `sync --check`, `adapters --check`, bootstrap without
-  cloning FEFO.
+- zsh-only CLI (`fefo`) with manifest DSL `.fefo/workspace.zsh`.
+- OpenCode-only: single `opencode.json`, no IDE adapters.
+- One CodeGraph MCP server with absolute `projectPath`; separate `vault`
+  server with `--no-watch`.
+- Vault graph from Markdown + `fefo graph` viewer.
+- Worktree-aware `fefo index` with seeding.
+- Default or AI-scoped agents; `codegraph` and `vault-search` skills.
+- Bonus shell functions `cmg`, `bng`, `doit`.
+- `fefo handoff` protocol and `fefo graph`.
 
-## v0.6 — OpenCode 2.4 and update discipline
+## In progress
 
-- [x] Per-repository CodeGraph opt-out (`codegraph: false`) for docs-only
-      orchestrators.
-- [x] Workspace browse-MCP opt-out (`browse: false`) and browse-binary doctor
-      check.
-- [x] Latest-OpenCode gate in the installer, `doctor`, mutating commands, and
-      the zsh helpers (cached latest-version check, CI/offline bypass).
-- [x] Document the 2.4 browser, automations, media, TUI and upgrade notes.
-- [x] Verify the child orchestrators and the installer, zsh, and plugin
-      repositories against OpenCode 2.4.1.
-- [ ] Automatic OpenCode update process (scheduled, with the same gate).
-- [ ] Optional `/fefo-automation` command for the read-only `doctor` and
-      `sync --check` recipes.
-- [ ] Pin guidance for plugins that now auto-update by version range.
-- [ ] Decide the default `external_directory` policy.
+- Installer (`install.zsh`) and test suite for the zsh rewrite.
+- `fefo agents --ai` non-interactive OpenCode job.
+- Vault graph viewer polish.
 
-## v0.4 — knowledge graph
+## Planned
 
-- [ ] Export the vault graph as JSON and Mermaid.
-- [ ] Link repository notes to CodeGraph symbols and source paths.
-- [ ] `fefo vault` for index and link validation.
-- [ ] Optional semantic search over the vault.
+- Automatic OpenCode update process with the same version gate.
+- Optional semantic search over the vault.
+- Link repository notes to CodeGraph symbols and source paths.
+- `fefo vault` for index and link validation.
 
-## Deferred
+## Removed (and why)
 
-- Remote MCP credential synchronization across harnesses.
-- Multi-root CodeGraph snapshots.
-- A web UI for the federation manifest.
-- Automatic repository cloning from a remote manifest.
+- Python CLI and tests: replaced by zsh; only `lib/vault-graph.mjs` remains
+  (CodeGraph's bundled Node).
+- IDE adapters for Cursor/Copilot: OpenCode is the primary harness. Basic
+  Claude Code CLI support ships via `CLAUDE.md`, `.mcp.json`, and
+  `.claude/skills/` when `claude on`.
+- Slash commands, modes, plugins, and the `fefo` primary agent: orchestration
+  lives in `AGENTS.md`.
+- Windows/PowerShell paths: Linux/macOS zsh only.
+- Multi-harness sync and adapter checks.

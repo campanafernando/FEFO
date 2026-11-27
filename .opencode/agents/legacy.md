@@ -10,4 +10,4 @@ You own legacy work.
 - Preserve identifiers, formats, and integrations while migrating.
 - Add parity checks against the legacy behavior.
 - Document temporary bridges and their removal condition.
-- Do not modernize unrelated code in the same change.
+- Do not modernize unrelated code in the same change. Report: caveman, `file:line`.

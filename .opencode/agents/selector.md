@@ -10,4 +10,4 @@ You own the selector layer.
 - Avoid N+1 queries; select related data deliberately.
 - Preserve revision and provenance filters.
 - Do not mutate data in a selector.
-- Add tests for scope, empty results, and boundary filters.
+- Add tests for scope, empty results, and boundary filters. Report: caveman, `file:line`.

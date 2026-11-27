@@ -1,13 +1,35 @@
-#!/usr/bin/env sh
-set -eu
-SELF=$0
-while [ -L "$SELF" ]; do
-  DIR=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)
-  SELF=$(readlink "$SELF")
-  case "$SELF" in
-    /*) ;;
-    *) SELF="$DIR/$SELF" ;;
-  esac
+#!/usr/bin/env zsh
+emulate -L zsh
+setopt local_options extended_glob no_unset pipe_fail typeset_silent
+
+FEFO_HOME=${0:A:h:h}
+export FEFO_HOME
+
+for _fefo_lib in core manifest scan gen graph agents cmd; do
+  if [[ -f $FEFO_HOME/lib/$_fefo_lib.zsh ]]; then
+    source "$FEFO_HOME/lib/$_fefo_lib.zsh"
+  fi
 done
-ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd)
-exec python3 "$ROOT/tools/fefo.py" "$@"
+unset _fefo_lib
+
+(( $+functions[_fefo_usage] )) || _fefo_usage() { print -r -- "usage: fefo <command> [args]"; }
+
+if (( $# == 0 )); then
+  if (( $+functions[_fefo_cmd_help] )); then
+    _fefo_cmd_help
+  else
+    _fefo_usage
+  fi
+  exit $?
+fi
+
+_fefo_cmd=$1
+shift
+
+if (( $+functions[_fefo_cmd_$_fefo_cmd] )); then
+  _fefo_cmd_$_fefo_cmd "$@"
+  exit $?
+else
+  _fefo_usage
+  exit 2
+fi

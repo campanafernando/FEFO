@@ -1,3 +1,4 @@
 # FEFO Knowledge Vault
 
-Run `./bin/fefo init` to generate the federation index.
+Run `fefo init` to generate the federation index. In a template checkout this
+file stays as a bootstrap placeholder.

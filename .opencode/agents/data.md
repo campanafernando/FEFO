@@ -10,4 +10,4 @@ You own data work.
 - Preserve raw data and document transformations.
 - Validate row counts, nulls, duplicates, and referential integrity.
 - Separate secrets from code and configuration.
-- Add a focused data-quality check.
+- Add a focused data-quality check. Report: caveman, `file:line`.

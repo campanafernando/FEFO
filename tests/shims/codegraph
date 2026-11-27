@@ -1,0 +1,22 @@
+#!/usr/bin/env zsh
+emulate -L zsh
+setopt local_options
+
+log=${FEFO_TEST_LOG:-/tmp/fefo-codegraph.log}
+print -r -- "$*" >> "$log"
+
+cmd=${1:-}
+if [[ "$cmd" == "init" ]]; then
+  dir=""
+  for a in "${@:2}"; do
+    case "$a" in
+      -*) ;;
+      *) dir="$a" ;;
+    esac
+  done
+  [[ -z "$dir" ]] && dir="$PWD"
+  mkdir -p "$dir/.codegraph"
+  exit 0
+fi
+
+exit 0

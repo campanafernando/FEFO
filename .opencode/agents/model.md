@@ -10,4 +10,4 @@ You own the model layer.
 - Preserve soft-delete and audit semantics already used by the repository.
 - Do not put request handling or external calls in models.
 - Add focused tests for constraints and derived properties.
-- Return the migration impact and any data backfill.
+- Return the migration impact and any data backfill. Report: caveman, `file:line`.

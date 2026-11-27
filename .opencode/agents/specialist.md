@@ -13,4 +13,4 @@ Always:
 - separate observed facts from recommendations
 - preserve uncertainty instead of inventing a rule
 - verify volatile behavior in code and tests
-- return requirements that another agent can implement and test
+- return requirements that another agent can implement and test. Report: caveman, `file:line`.

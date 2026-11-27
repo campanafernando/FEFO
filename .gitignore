@@ -12,5 +12,22 @@ node_modules/
 .env
 .env.*
 !.env.example
+!.env*.example
 .opencode/secrets/
 .claude/settings.local.json
+
+# FEFO template checkout: local generated overlay (never committed)
+/CLAUDE.md
+/.mcp.json
+/.claude/
+/opencode.json
+/opencode.jsonc
+/AGENTS.local.md
+/.fefo/workspace.zsh
+/.fefo/AGENTS.md
+/.fefo/README.md
+/.opencode/bin/
+/docs/vault/federation.md
+/docs/vault/repos/*.md
+!/docs/vault/repos/README.md
+/.codegraph/

@@ -54,4 +54,4 @@ Review the requested scope across:
 - resilience and failure handling
 - test coverage and observability
 
-Return findings in severity order with `file:line`, the consequence, and the smallest correct fix. Do not edit files. Do not reward speculative infrastructure.
+Return findings in severity order with `file:line` (caveman style), the consequence, and the smallest correct fix. Do not edit files. Do not reward speculative infrastructure.

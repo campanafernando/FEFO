@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#0b1014"/>
+  <rect x="60.5" y="60.5" width="1479" height="779" rx="10" fill="#10171c" stroke="#1f2a31"/>
+  <path d="M61 102.5h1478" stroke="#1f2a31"/>
+  <rect x="61" y="61" width="1478" height="41" rx="9" fill="#131b21"/>
+  <rect x="61" y="90" width="1478" height="12" fill="#131b21"/>
+  <circle cx="86" cy="81.5" r="6.5" fill="#ff5f57"/>
+  <circle cx="108" cy="81.5" r="6.5" fill="#febc2e"/>
+  <circle cx="130" cy="81.5" r="6.5" fill="#28c840"/>
+  <text x="800" y="87" text-anchor="middle" fill="#8b96a0" font-family="Inter, 'Segoe UI', Ubuntu, Helvetica, Arial, sans-serif" font-size="15">fefo@linux: ~/EXAMPLE</text>
+  <g font-family="'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Ubuntu Mono', monospace" font-size="17" xml:space="preserve" style="white-space:pre" fill="#c9d1d9">
+    <text x="105" y="152"><tspan fill="#4ade80">fefo@linux</tspan><tspan fill="#8b949e">:</tspan><tspan fill="#2dd4bf">~</tspan><tspan fill="#8b949e">$ </tspan><tspan fill="#e6edf3">curl -fsSL https://raw.githubusercontent.com/campanafernando/FEFO/main/install.zsh | zsh</tspan></text>
+    <text x="105" y="180" fill="#4ade80">FEFO installed.</text>
+    <text x="105" y="208">&#160;&#160;CLI:&#160;&#160;/home/fefo/.local/bin/fefo</text>
+    <text x="105" y="236">&#160;&#160;Home:&#160;/home/fefo/.local/share/fefo</text>
+    <text x="105" y="264"><tspan fill="#4ade80">fefo@linux</tspan><tspan fill="#8b949e">:</tspan><tspan fill="#2dd4bf">~</tspan><tspan fill="#8b949e">$ </tspan><tspan fill="#e6edf3">cd ~/EXAMPLE &amp;&amp; ls</tspan></text>
+    <text x="105" y="292">example-api&#160;&#160;example-infra&#160;&#160;example-web</text>
+    <text x="105" y="320"><tspan fill="#4ade80">fefo@linux</tspan><tspan fill="#8b949e">:</tspan><tspan fill="#2dd4bf">~/EXAMPLE</tspan><tspan fill="#8b949e">$ </tspan><tspan fill="#e6edf3">fefo init --cheap</tspan></text>
+    <text x="105" y="348"><tspan fill="#7d8590">fefo:</tspan> detected 3 git repositories</text>
+    <text x="105" y="376"><tspan fill="#7d8590">fefo:</tspan> added example-api (api/fastapi)</text>
+    <text x="105" y="404"><tspan fill="#7d8590">fefo:</tspan> added example-infra (infra/infra)</text>
+    <text x="105" y="432"><tspan fill="#7d8590">fefo:</tspan> added example-web (service/generic)</text>
+    <text x="105" y="460"><tspan fill="#7d8590">fefo:</tspan> wrote 16 files</text>
+    <text x="105" y="488"><tspan fill="#7d8590">agents:</tspan> created=23 updated=0 kept=0</text>
+    <text x="105" y="516"><tspan fill="#7d8590">fefo:</tspan> indexed example-api (1s)</text>
+    <text x="105" y="544"><tspan fill="#7d8590">fefo:</tspan> indexed example-infra (0s)</text>
+    <text x="105" y="572"><tspan fill="#7d8590">fefo:</tspan> indexed example-web (1s)</text>
+    <text x="105" y="600" fill="#4ade80">fefo: EXAMPLE ready — next: opencode</text>
+    <text x="105" y="628"><tspan fill="#4ade80">fefo@linux</tspan><tspan fill="#8b949e">:</tspan><tspan fill="#2dd4bf">~/EXAMPLE</tspan><tspan fill="#8b949e">$ </tspan><tspan fill="#e6edf3">fefo handoff checkout --status</tspan></text>
+    <text x="105" y="656" fill="#7d8590">lane | DONE? | report lines | last modified</text>
+    <text x="105" y="684">api | <tspan fill="#4ade80">yes</tspan> | 41 | 2026-11-27 11:55</text>
+    <text x="105" y="712">tests | <tspan fill="#4ade80">yes</tspan> | 28 | 2026-11-27 11:55</text>
+    <text x="105" y="740">web | <tspan fill="#4ade80">yes</tspan> | 37 | 2026-11-27 11:55</text>
+    <text x="105" y="768"><tspan fill="#4ade80">fefo@linux</tspan><tspan fill="#8b949e">:</tspan><tspan fill="#2dd4bf">~/EXAMPLE</tspan><tspan fill="#8b949e">$ </tspan><tspan fill="#e6edf3">opencode</tspan><tspan fill="#4ade80">█</tspan></text>
+  </g>
+</svg>

@@ -10,4 +10,4 @@ You own the service layer.
 - Keep external calls outside long transactions.
 - Make state transitions idempotent where the domain allows.
 - Return domain results, not HTTP responses.
-- Add tests for success, failure, rollback, and concurrency-sensitive paths.
+- Add tests for success, failure, rollback, and concurrency-sensitive paths. Report: caveman, `file:line`.

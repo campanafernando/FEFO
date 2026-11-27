@@ -15,9 +15,15 @@ description: Search the FEFO knowledge vault for decisions, domain rules, archit
 4. Follow links to decisions and source notes.
 5. Report the note path, date, and evidence.
 
+## CodeGraph access
+
+The vault is served by the `vault` MCP server (`codegraph serve --mcp --no-watch
+--path docs/vault`). Query it with `codegraph_context`/`codegraph_search` like any
+repo index. It is never watched: run `fefo index --vault` after vault edits.
+
 ## Rules
 
-- Do not use CodeGraph for Markdown; it indexes source code.
+- Do not use the `codegraph` server for Markdown; it indexes source code.
 - Do not present a vault note as current code behavior without checking the code.
 - Add new durable knowledge to the correct note; do not create a parallel task tracker.
 - Preserve provenance: date, repository, revision, and source.

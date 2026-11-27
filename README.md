@@ -1,268 +1,144 @@
 # FEFO
 
-**Flow Execution via Federated Ontology.**
+![FEFO in a terminal: install, init, parallel lanes](docs/assets/fefo-terminal.png)
 
-FEFO is a whitelabel workspace for OpenCode that federates independent Git
-repositories into one context. Each repository keeps its history, dependencies,
-and tests; FEFO owns routing, standards, harness adapters, and the knowledge
-vault.
+FEFO is a thin federation layer for OpenCode: one zsh CLI that writes a
+workspace's root instructions (`AGENTS.md`), OpenCode config (`opencode.json`),
+a markdown vault, and CodeGraph wiring for sibling repositories. The
+orchestration method lives in `AGENTS.md`, so any OpenCode session follows it
+with no FEFO agent, plugin, mode, or slash command.
 
-> FEFO is the reference template and generator. `fefo-install` installs the CLI,
-> the `opencode-fefo` plugin runs the same commands inside OpenCode, and
-> `opencode-zshell` exposes them from zsh.
+## Requirements
 
-## Prerequisite: latest OpenCode
-
-FEFO follows OpenCode. Use the latest CLI; the installer and mutating `fefo`
-commands refuse to run while an update is pending.
-
-```sh
-opencode --version
-opencode upgrade
-```
-
-`fefo doctor` fails when the installed CLI is older than the published latest
-version. The same rule applies to the tools FEFO launches: CodeGraph, the
-browser MCP, and the plugin. `FEFO_SKIP_UPDATE_CHECK=1` bypasses the check only
-for CI or offline use.
-
-Requirements: Git, Python 3.10+, OpenCode 2.4.1+ (latest). CodeGraph is optional
-for indexing; the browser MCP is optional for desktop work.
+- zsh 5.8+ on Linux or macOS
+- git
+- OpenCode 2.4.2+ (latest)
+- Recommended, detected by `fefo doctor`: `codegraph` CLI, `browse` (browser
+  MCP), ponytail plugin, caveman skill.
+- CodeGraph needs no Node: `curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh | sh`;
+  upgrade with `codegraph upgrade`.
 
 ## Install
 
-Linux, macOS and WSL:
+```sh
+curl -fsSL https://raw.githubusercontent.com/campanafernando/FEFO/main/install.zsh | zsh
+```
+
+Or in a clone:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/campanafernando/fefo-install/main/install.sh | sh
+zsh install.zsh
 ```
 
-Windows PowerShell (`cmd.exe` uses the same `fefo.cmd` shim afterwards):
+Flags: `--dir`, `--ref`, `--cheap`, `--model`, `--fallback`,
+`--ai-agents`/`--default-agents`, `--yes`, `--with-all`, `--uninstall`.
+Interactive by default: pick cheap (strongest free model) or default (search
+and pick any OpenCode model), plus optional CodeGraph, browse, ponytail, caveman.
 
-```powershell
-irm https://raw.githubusercontent.com/campanafernando/fefo-install/main/install.ps1 | iex
-```
-
-The installer verifies Python and the latest OpenCode, downloads FEFO to
-`~/.local/share/fefo` (`%LOCALAPPDATA%\fefo` on Windows), links the `fefo` CLI,
-and verifies it runs. Re-running replaces the template; workspaces keep their
-own manifest, generated files and Git history.
-
-## Build a workspace
+## Quick start
 
 ```sh
-mkdir -p ~/EXEMPLO && cd ~/EXEMPLO
-git clone <url> exemplo-api
-git clone <url> exemplo-web
-fefo build        # or: fefo .
+mkdir -p ~/work && cd ~/work
+git clone <api-url> api && git clone <web-url> web
+fefo init        # scans api/ and web/, asks cheap or default, indexes
+opencode         # then: "act as orchestrator: <spec>"
 ```
 
-`fefo build` runs two phases:
+`fefo init` scans children and siblings (or takes `--repo PATH`). OpenCode reads
+project config only inside a Git repository, so `init` runs `git init` when the
+workspace is not one and keeps nested repos out of it via `.gitignore`.
 
-1. Deterministic: copies the agents/skills skeleton, scans direct Git children,
-   infers role, stack and commands, and writes the OpenCode, Claude, Cursor and
-   Copilot adapters.
-2. OpenCode: picks a model like `fefo doit` does (cached free model; override
-   with `BUILD_MODEL` or `--model`), inspects each repository, and tunes
-   `.fefo/workspace.json`, `AGENTS.local.md` and the vault notes. It does not
-   edit generated files or run Git.
+## Model modes
 
-Use `fefo build --no-ai` (or `fefo init`) for the deterministic result only.
-The manual alternative keeps working:
+- `cheap` (default): at dispatch, pick the strongest free OpenCode model and
+  pin it on every subagent call; keep the next two strongest free models as
+  the ladder.
+- `default`: pin one model you pick on every subagent call.
+- Automatic fallback is always on: on a usage/rate/provider error, resume the
+  same session on the sibling provider, then the strongest other free model,
+  then your own model (or the configured fallback).
+- Variant/effort is never asked: `AGENTS.md` tells the orchestrator to use the
+  highest variant automatically.
 
-```sh
-./bin/fefo init --repo ../api --repo ../web
-```
+Set with `fefo model cheap|default`, or interactively during `fefo init`.
 
-Then open OpenCode at the workspace root. The generated entry point is the
-`fefo` agent:
+## Commands
 
-```text
-/fefo-add ../worker --role data
-/fefo-index
-/fefo-status
-/fefo-doctor
-```
-
-## CLI helpers
-
-The same package ships cross-platform `cmg`, `bng` and `doit`:
-
-```sh
-fefo cmg                  # suggest a Conventional Commit message
-fefo bng                  # suggest and create a branch from the diff
-fefo doit "task"          # run a task through OpenCode
-fefo doit --ask "task"    # review permissions instead of auto-allowing
-fefo doit -C ~/repo "task"
-```
-
-`opencode-zshell` keeps the bare zsh functions.
-
-## What FEFO generates
-
-| File | Purpose |
+| Command | Purpose |
 |---|---|
-| `.fefo/workspace.json` | Source of truth: repos, roles, stacks, MCP servers, model |
-| `opencode.json` | OpenCode model, agents, references, permissions, MCP gateway |
-| `.opencode/bin/browse-mcp.sh` | Browse launcher (omitted when `browse: false`) |
-| `.mcp.json` | Claude Code MCP configuration |
-| `.claude/` | Claude agents, skills, commands, settings |
-| `CLAUDE.md` | Claude entry point that imports `AGENTS.md` |
-| `.cursor/rules/fefo.mdc` | Cursor project rule |
-| `.github/copilot-instructions.md` | GitHub Copilot instructions |
-| `AGENTS.md` | Routing contract and repository table |
-| `AGENTS.local.md` | User-owned local instructions; never overwritten |
-| `docs/vault/` | Knowledge vault, federation snapshot, per-repo notes |
-| `codegraph/README.md` | Index and MCP guidance |
+| `fefo init` | create manifest, sync, index |
+| `fefo add PATH` | add a repository |
+| `fefo remove NAME` | remove a repository |
+| `fefo sync [--check]` | regenerate managed files |
+| `fefo status` | workspace overview |
+| `fefo index [NAME...]` | refresh CodeGraph indexes |
+| `fefo index --vault` | rebuild the vault graph |
+| `fefo doctor` | validate workspace and tools |
+| `fefo mcp list\|add\|remove` | manage MCP servers |
+| `fefo model ...` | show/set subagent policy |
+| `fefo handoff TASK LANE...` | create handoff directory |
+| `fefo graph` | open the know-graph viewer |
+| `fefo agents` | install default or AI-scoped agents |
+| `fefo version`, `fefo help` | |
 
-Generated files are replaced by `./bin/fefo sync`. Put user-owned text in
-`AGENTS.local.md` and `docs/vault/`. To add settings to the generated
-`opencode.json` or `.claude/settings.json` (plugins, formatter, hooks, extra
-permissions), put them in the manifest — `plugins`, `opencode`,
-`claude_settings` — and they are deep-merged on every sync. A no-op `sync`
-changes nothing; `./bin/fefo sync --check` reports drift without writing.
+## Workspace files
 
-The FEFO source checkout is not a workspace: it keeps its bootstrap docs and
-ignores a local generated overlay. A generated workspace gets the full set.
+Generated (rewritten by `fefo sync`): `opencode.json`, `AGENTS.md`,
+`docs/vault/*`, `codegraph/README.md`, launchers, and (when `claude on`)
+`CLAUDE.md`, `.mcp.json`, `.claude/skills/*`.
 
-## Repository roles
+Yours (never overwritten): `AGENTS.local.md`, `docs/vault/decisions.md`,
+`.env`, `.env.mcp`, `opencode.jsonc`, `.opencode/opencode.json`. OpenCode
+merges the user-owned config after `opencode.json`; FEFO never touches it.
 
-`api`, `web`, `mobile`, `data`, `infra`, `legacy`, `integration`, `docs`,
-`service`, `library`, `orchestrator`. FEFO detects Django, FastAPI, Flask,
-NestJS, Next.js, React, Flutter, docs, and infrastructure stacks; override with
-`--stack`, `--role`, `--test`, `--lint`, `--build`.
+The manifest is `.fefo/workspace.zsh`. User defaults live in
+`${XDG_CONFIG_HOME:-$HOME/.config}/fefo/config.zsh`.
 
-## MCP gateway
+## Handoff protocol
 
-CodeGraph is the default. FEFO creates one local server per indexed repository:
+`fefo handoff <task> <lane>...` creates `<handoff-root>/<task>/` (mode 700)
+with `README.md` (targets, rules, decisions, lane table) and lane dirs. Default
+handoff root: `/var/tmp/fefo/<ws-slug>/<task>`. Each lane writes `report.md`,
+then an empty `DONE`; `fefo handoff <task> --status` shows which lanes are done.
+Resume stopped subagents by session id.
 
-```jsonc
-{
-  "mcp": {
-    "servers": {
-      "codegraph-api": {
-        "type": "local",
-        "command": ["codegraph", "serve", "--mcp", "--path", "../api"]
-      }
-    }
-  }
-}
-```
+## CodeGraph, vault graph, know-graph
 
-Set `"codegraph": false` on a docs-only repository to skip its index and MCP
-server. Set `"browse": false` in the manifest to omit the external browse MCP
-and use the OpenCode desktop app's built-in browser instead. The browse MCP
-remains the TUI/CLI/Claude path.
+- CodeGraph: one server (`codegraph`); pass absolute `projectPath`. Refresh
+  indexes first: `fefo index`.
+- Vault: Markdown is not a CodeGraph language. A separate `vault` server
+  (served with `--no-watch`) exposes notes; rebuild with `fefo index --vault`.
+- know-graph: `fefo graph` renders the vault graph in a local browser page.
 
-Add another MCP without editing JSON:
+## Agents
 
-```sh
-./bin/fefo mcp add docs --local -- npx -y @modelcontextprotocol/server-filesystem ./docs
-./bin/fefo mcp add sentry --remote https://mcp.sentry.dev/mcp
-./bin/fefo mcp list
-./bin/fefo mcp remove docs
-```
+`fefo agents` installs either the default copied set (offline, recommended) or
+AI-scoped agents generated by one OpenCode job. Only `codegraph` and
+`vault-search` skills ship. Subagents are `mode: subagent` with no model pin.
 
-Local MCPs are mirrored to Claude Code. Remote MCPs with `{file:...}` or
-`{env:...}` credentials stay OpenCode-only by default; see
-[`docs/harnesses.md`](docs/harnesses.md).
+## Bonus shell functions
 
-## Agent base
+`share/fefo.zsh` provides `cmg` (commit message from staged diff), `bng`
+(branch name from diff), `doit` (run a task with `opencode run`). Sourced from
+`~/.zshrc` by the installer.
 
-- **Orchestration:** `fefo`, `backend`, `frontend`
-- **Backend layers:** `model`, `service`, `selector`, `serializer`, `migration`, `test`, `lint`
-- **Data:** `database`, `data`
-- **Web layers:** `form`, `table`, `api-layer`, `design`, `i18n`
-- **Cross-cutting:** `cross-stack`, `architect`, `security`, `infra`, `legacy`, `integration`
-- **Extension:** `specialist` template
+## Using Claude
 
-No agent hardcodes a model; agents inherit the session model. See
-[`docs/agents.md`](docs/agents.md) for the catalog and routing.
+Recommended: OpenCode plus the Claude Agent integration. Run `opencode auth
+login`, pick "Claude Agent"; it reuses your Claude Code login, so a Claude
+subscription works inside OpenCode with no OpenCode plan. The OpenCode Go plan
+is strongly recommended for cheap workers and higher free-model limits.
 
-## Knowledge vault
+Claude Code CLI works directly too: FEFO generates `CLAUDE.md`,
+`.mcp.json`, and `.claude/skills/` when `claude on` (default). This is basic
+support — no OpenCode model pinning; subagents run on Claude models.
 
-`docs/vault/` stores `00-INDEX.md`, the generated `federation.md`, per-repo
-`repos/<name>.md` (generated facts plus user-owned domain notes), and
-`decisions.md`. CodeGraph is for code; the vault is for product rules, contracts,
-provenance, and decisions.
+## Upgrading from Python FEFO
 
-## Harnesses
-
-OpenCode is canonical. FEFO derives the rest:
-
-| Harness | Entry point |
-|---|---|
-| OpenCode | `opencode.json`, `.opencode/agents`, `.opencode/commands`, `.agents/skills` |
-| Claude Code | `.mcp.json`, `.claude/`, `CLAUDE.md` |
-| Cursor | `.cursor/rules/fefo.mdc` |
-| GitHub Copilot | `.github/copilot-instructions.md` |
-
-See [`docs/harnesses.md`](docs/harnesses.md) for the adapter contract and
-version policy.
-
-## Version policy
-
-- **Floor:** OpenCode 2.4.1+. Patch releases bump the floor and refresh the
-  cache; the runtime check still follows the published latest.
-- **Source of truth:** `https://opencode.ai/update/api/latest/cli/npm`.
-- **Checked locally:** the installer, `fefo doctor`, and every mutating command.
-  Read-only commands warn; writes and model turns stop until `opencode upgrade`
-  has run.
-- **Cached:** 24 hours in `~/.cache/opencode/latest-opencode.json`; tune with
-  `FEFO_UPDATE_TTL`, or point `FEFO_UPDATE_URL` at an internal mirror.
-- **Offline:** a cached version is used; without a cache the command warns and
-  continues. `FEFO_SKIP_UPDATE_CHECK=1` bypasses the check for CI only.
-- **Tools:** CodeGraph and browse are checked for presence; the plugin follows
-  the OpenCode version. FEFO does not support pinning an older CLI.
-
-## CLI
-
-```sh
-./bin/fefo build                # adopt this directory + OpenCode enrichment
-./bin/fefo build --no-ai        # deterministic only
-./bin/fefo init                 # deterministic; explicit --repo also works
-./bin/fefo init --no-browse      # omit the external browse MCP
-./bin/fefo add <path>            # add or update a repository
-./bin/fefo add <path> --no-codegraph  # docs-only repo: no index or MCP server
-./bin/fefo remove <name>         # remove a repository
-./bin/fefo sync                  # regenerate config and harness adapters
-./bin/fefo sync --check          # report generated files that are out of date
-./bin/fefo adapters [--check]    # derive .claude agents/skills/commands only
-./bin/fefo index [name...]       # refresh CodeGraph indexes
-./bin/fefo status                # repository and index overview
-./bin/fefo doctor                # validate the workspace and OpenCode version
-./bin/fefo cmg                   # suggest a Conventional Commit message
-./bin/fefo bng                   # suggest and create a branch
-./bin/fefo doit "task"           # run a task through OpenCode
-./bin/fefo mcp add|remove|list   # manage additional MCP servers
-```
-
-Run `./bin/fefo <command> --help` for flags.
-
-## Ecosystem
-
-| Project | Role |
-|---|---|
-| **FEFO** (this repository) | Reference template, generator and CLI |
-| **`fefo-install`** | Installer for Linux, macOS and Windows |
-| **`opencode-fefo`** | FEFO commands and tools inside an existing workspace |
-| **`opencode-zshell`** | zsh helpers for `cmg`, `doit`, `bng` and `fefo` |
-
-FEFO is the source of truth. The installer only downloads it and links the CLI;
-the plugin and the zsh layer delegate to that same CLI.
-
-## Design principles
-
-1. **Federate, do not merge.** Repositories keep their own Git history and
-   delivery pipeline.
-2. **One source of truth.** The manifest drives every generated adapter.
-3. **CodeGraph first for code, vault for knowledge.**
-4. **Contract first across repositories.**
-5. **Modular agents, inherited model.**
-6. **No silent destructive actions.** Git history changes require authorization.
-7. **Latest OpenCode, no pinned older CLI.** The installer and commands enforce
-   it; the automatic updater is the next step.
-
-## License
-
-MIT. See [`LICENSE`](LICENSE).
+Re-run `fefo init --force` in the workspace. Python FEFO is retired. Removed:
+Python CLI and tests, Cursor/Copilot adapters, old `.claude` agents/commands/
+settings wrappers, slash commands, the `fefo` primary agent and "mode", the
+`opencode-fefo` plugin and its "fefo" permission action, Windows/PowerShell
+paths. Kept: the orchestration method (now in `AGENTS.md`), CodeGraph per
+repo, the vault, and `cmg`/`bng`/`doit`. Basic Claude Code CLI support
+(`CLAUDE.md`, `.mcp.json`, `.claude/skills`) is added.

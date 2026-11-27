@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>know-graph</title>
+<style>
+:root{--bg:#f7f7f8;--panel:#ffffff;--text:#1a1a1a;--muted:#6b6b6b;--border:#e2e2e2;--accent:#3b82f6}
+@media (prefers-color-scheme:dark){:root{--bg:#111214;--panel:#1b1c1f;--text:#e6e6e6;--muted:#9a9a9a;--border:#2a2b2e;--accent:#60a5fa}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
+#wrap{display:flex;height:100vh}
+#side{width:300px;background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow:auto;flex-shrink:0}
+#canvas{flex:1}
+h1{font-size:14px;margin:0 0 8px}
+input[type=search]{width:100%;padding:6px 8px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.filters label{font-size:12px;color:var(--muted);cursor:pointer}
+#info{font-size:12px;line-height:1.4}
+#info .path{font-family:ui-monospace,monospace;color:var(--accent);word-break:break-all}
+#info ul{margin:6px 0;padding-left:16px}
+#info li{margin:2px 0}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="side">
+<h1>know-graph</h1>
+<input type="search" id="q" placeholder="search label/path">
+<div class="filters" id="filters"></div>
+<div id="info">Click a node.</div>
+</div>
+<canvas id="canvas"></canvas>
+</div>
+<script>
+const GRAPH = /*@@GRAPH@@*/;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const kinds = ['file','heading','tag','concept','repo'];
+const color = {file:'#3b82f6',heading:'#10b981',tag:'#f59e0b',concept:'#a855f7',repo:'#ef4444'};
+const hiddenDefault = {heading:true};
+let filters = {};
+for (const k of kinds) filters[k] = !hiddenDefault[k];
+const nodes = GRAPH.nodes.map(n=>({id:n.id,kind:n.kind,label:n.label,path:n.path,line:n.line,x:0,y:0,vx:0,vy:0,visible:true}));
+const byId = new Map(nodes.map(n=>[n.id,n]));
+const edges = GRAPH.edges.map(e=>({s:e.s,t:e.t,kind:e.kind,line:e.line,a:byId.get(e.s),b:byId.get(e.t)})).filter(e=>e.a&&e.b);
+let W,H;
+function resize(){W=canvas.width=canvas.clientWidth;H=canvas.height=canvas.clientHeight;for(const n of nodes){if(!n.x&&!n.y){n.x=Math.random()*W;n.y=Math.random()*H;}}}
+window.addEventListener('resize',resize);resize();
+function updateVisible(){for(const n of nodes)n.visible=!!filters[n.kind];}
+updateVisible();
+// filters UI
+const fbox=document.getElementById('filters');
+for(const k of kinds){
+  const l=document.createElement('label');
+  const cb=document.createElement('input');
+  cb.type='checkbox';cb.checked=filters[k];
+  cb.addEventListener('change',()=>{filters[k]=cb.checked;updateVisible();});
+  l.appendChild(cb);l.appendChild(document.createTextNode(' '+k));
+  fbox.appendChild(l);
+}
+// search
+let term='';
+document.getElementById('q').addEventListener('input',e=>{term=e.target.value.toLowerCase();});
+let selected=null;
+canvas.addEventListener('click',e=>{
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top;
+  let best=null,bd=18;
+  for(const n of nodes){if(!n.visible)continue;const d=Math.hypot(n.x-mx,n.y-my);if(d<bd){bd=d;best=n;}}
+  selected=best;
+  const info=document.getElementById('info');
+  if(!best){info.textContent='Click a node.';return;}
+  const neigh=edges.filter(ed=>ed.a===best||ed.b===best).map(ed=>{const o=ed.a===best?ed.b:ed.a;return o.label+' ('+ed.kind+')';});
+  info.innerHTML='<div class="path">'+esc(best.path)+(best.line?':'+best.line:'')+'</div><div>'+best.kind+' · '+esc(best.label)+'</div><div>neighbors:</div><ul>'+neigh.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>';
+});
+const k=Math.sqrt((W*H)/Math.max(nodes.length,1));
+function tick(){
+  for(let i=0;i<nodes.length;i++){
+    const a=nodes[i];if(!a.visible)continue;
+    for(let j=i+1;j<nodes.length;j++){
+      const b=nodes[j];if(!b.visible)continue;
+      let dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy)||1;
+      let f=(k*k)/d;
+      a.vx+=dx/d*f;a.vy+=dy/d*f;
+      b.vx-=dx/d*f;b.vy-=dy/d*f;
+    }
+  }
+  for(const e of edges){const a=e.a,b=e.b;if(!a.visible||!b.visible)continue;let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1;let f=(d*d)/k;a.vx+=dx/d*f;a.vy+=dy/d*f;b.vx-=dx/d*f;b.vy-=dy/d*f;}
+  for(const n of nodes){if(!n.visible)continue;n.vx+=(W/2-n.x)*0.01;n.vy+=(H/2-n.y)*0.01;n.vx*=0.85;n.vy*=0.85;n.x+=n.vx;n.y+=n.vy;n.x=Math.max(10,Math.min(W-10,n.x));n.y=Math.max(10,Math.min(H-10,n.y));}
+  draw();
+  requestAnimationFrame(tick);
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  ctx.lineWidth=1;
+  for(const e of edges){const a=e.a,b=e.b;if(!a.visible||!b.visible)continue;ctx.strokeStyle='rgba(120,120,120,0.35)';ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+  for(const n of nodes){if(!n.visible)continue;const match=term&& (n.label.toLowerCase().includes(term)||n.path.toLowerCase().includes(term));ctx.beginPath();ctx.arc(n.x,n.y,match?7:5,0,Math.PI*2);ctx.fillStyle=color[n.kind]||'#888';ctx.fill();if(selected===n){ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();ctx.lineWidth=1;}if(match){ctx.strokeStyle=color[n.kind];ctx.lineWidth=2;ctx.stroke();ctx.lineWidth=1;}}
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--text')||'#000';
+  ctx.font='10px system-ui';
+  for(const n of nodes){if(!n.visible)continue;if(term&&!(n.label.toLowerCase().includes(term)||n.path.toLowerCase().includes(term)))continue;ctx.fillText(n.label,n.x+7,n.y+3);}
+}
+tick();
+</script>
+</body>
+</html>

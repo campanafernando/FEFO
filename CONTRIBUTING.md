@@ -1,57 +1,54 @@
 # Contributing
 
-FEFO is intentionally small and dependency-free. The generator is a single
-Python file.
+FEFO is intentionally small and dependency-free. The CLI is zsh; the only
+non-zsh file is `lib/vault-graph.mjs`.
 
 ## Change flow
 
-1. Change the canonical source:
+1. Change canonical sources:
+   - `lib/` for CLI behavior
+   - `templates/` for orchestrator-owned text
    - `.opencode/agents/` for agents
-   - `.opencode/commands/` for commands
    - `.agents/skills/` for skills
-   - `tools/fefo.py` for generation behavior
    - `docs/` for documentation
-2. Run the test suite:
+2. Run `zsh -n` on every changed `.zsh` file.
+3. Run the test suite:
    ```sh
-   python3 -m unittest discover -s tests -v
+   FEFO_SKIP_UPDATE_CHECK=1 zsh tests/fefo.zsh
    ```
-3. Run the generator against a temporary workspace:
+4. Run the generator against a temporary workspace:
    ```sh
    ./bin/fefo init --name Test --repo ../some-repo --no-index --yes
    ./bin/fefo doctor
-   ```
-4. Regenerate adapters in the real workspace, then confirm nothing drifted:
-   ```sh
-   ./bin/fefo sync
    ./bin/fefo sync --check
    ```
-5. Keep generated files in sync; never hand-edit a generated adapter.
+5. Keep generated files in sync; never hand-edit a generated file.
+
+## Portability rules
+
+- Every function starts with `emulate -L zsh; setopt local_options extended_glob no_unset pipe_fail`.
+- Private helpers `_fefo_*`; command entry points `_fefo_cmd_<name>`.
+- No `sed -i`, `readlink -f`, `stat -c` alone, or `date -d`.
+- Mtime via `zmodload -F zsh/stat b:zstat; zstat +mtime`.
+- Quote every expansion; arrays as `"${arr[@]}"`.
 
 ## Adding an agent
 
-- One responsibility per agent.
-- No hardcoded model.
-- Frontmatter: `description`, `mode: subagent`.
-- Read-only agents deny `edit` **and** `shell` in `permissions`, then allow a short list of read-only shell commands (see `architect.md`). `./bin/fefo doctor` warns when an agent denies `edit` but can still write through the shell.
-- Add the agent to `docs/agents.md` and the routing table in the generated
-  `AGENTS.md` template inside `tools/fefo.py`.
+- One responsibility per agent. Frontmatter: `description`, `mode: subagent`, no
+  `model:` pin.
+- Read-only agents deny `edit` and `shell` except a short allowlist.
+- Add the agent to `docs/architecture.md` and the routing table in
+  `templates/AGENTS.md`.
 
 ## Adding a skill
 
 - Put it under `.agents/skills/<id>/SKILL.md`.
 - Use frontmatter `name` and `description`.
-- Keep it procedural and under one page when possible.
-
-## Adding a command
-
-- Put it under `.opencode/commands/<name>.md`.
-- Use frontmatter `description`.
-- Prefer instructing the agent over embedding a shell block, unless the command
-  is a deterministic wrapper around `./bin/fefo`.
+- Keep it procedural and under one page.
 
 ## Style
 
 - English documentation.
 - Plain Markdown.
 - No secrets, real customer data, or personal paths.
-- Small, focused changes.
+- Small, focused changes; deletion beats addition.

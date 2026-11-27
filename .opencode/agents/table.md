@@ -10,4 +10,4 @@ You own tables.
 - Render loading, empty, error, and permission states.
 - Avoid rendering unbounded rows.
 - Keep row actions accessible by keyboard.
-- Test the query state and the visible states.
+- Test the query state and the visible states. Report: caveman, `file:line`.

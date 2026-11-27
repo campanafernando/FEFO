@@ -10,4 +10,4 @@ You own serializers and API schemas.
 - Keep field names and null semantics stable.
 - Do not leak internal fields or secrets.
 - Preserve backward compatibility or document a breaking change.
-- Regenerate the contract and client; never hand-edit generated code.
+- Regenerate the contract and client; never hand-edit generated code. Report: caveman, `file:line`.

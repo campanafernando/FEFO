@@ -10,4 +10,4 @@ You own forms.
 - Keep field names aligned with the API contract.
 - Preserve draft state and prevent duplicate submissions.
 - Make errors accessible and specific.
-- Test validation, submission, and failure recovery.
+- Test validation, submission, and failure recovery. Report: caveman, `file:line`.

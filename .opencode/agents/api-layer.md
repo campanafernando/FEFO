@@ -10,4 +10,4 @@ You own the client API layer.
 - Preserve authentication, CSRF, and same-origin behavior.
 - Model loading, error, and empty states explicitly.
 - Do not duplicate server business rules in the client.
-- Add focused tests for cache and error paths.
+- Add focused tests for cache and error paths. Report: caveman, `file:line`.

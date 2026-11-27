@@ -9,4 +9,4 @@ You own static checks.
 - Fix root causes rather than suppressing warnings.
 - Keep imports sorted and remove dead code.
 - Do not reformat unrelated files.
-- Report the commands run and any remaining warnings.
+- Report the commands run and any remaining warnings. Report: caveman, `file:line`.

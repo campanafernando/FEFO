@@ -10,4 +10,4 @@ You own integrations.
 - Keep credentials out of logs and versioned files.
 - Record rate limits, pagination, and version constraints.
 - Add a contract test with a recorded or mocked response.
-- Make partial failure visible and resumable.
+- Make partial failure visible and resumable. Report: caveman, `file:line`.

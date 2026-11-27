@@ -10,4 +10,4 @@ You own migrations.
 - Declare defaults, nullability, and index creation explicitly.
 - Provide a rollback or a documented irreversible step.
 - Test against a representative database, not only an empty one.
-- Never rewrite published migration history on a shared branch.
+- Never rewrite published migration history on a shared branch. Report: caveman, `file:line`.

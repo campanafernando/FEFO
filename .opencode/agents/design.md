@@ -10,4 +10,4 @@ You own the visual layer.
 - Verify narrow and wide layouts.
 - Do not invent a parallel design system.
 - Prefer native semantics over custom widgets.
-- Report screenshots or viewport checks when available.
+- Report screenshots or viewport checks when available. Report: caveman, `file:line`.
