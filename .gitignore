@@ -30,4 +30,4 @@ node_modules/
 /docs/vault/federation.md
 /docs/vault/repos/*.md
 !/docs/vault/repos/README.md
-/.codegraph/
+.codegraph/

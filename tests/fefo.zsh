@@ -269,6 +269,9 @@ t "vault graph json exists" '[[ -f docs/vault/.codegraph/vault-graph.json ]]'
 t "vault graph json nodes" 'grep -q "\"nodes\"" docs/vault/.codegraph/vault-graph.json'
 t "vault graph json edges" 'grep -q "\"edges\"" docs/vault/.codegraph/vault-graph.json'
 t "vault graph json balanced" '[[ $(tr -cd "{" < docs/vault/.codegraph/vault-graph.json | wc -c) -eq $(tr -cd "}" < docs/vault/.codegraph/vault-graph.json | wc -c) ]]'
+t "vault headings have labels" '! grep -q "\"kind\":\"heading\",\"label\":\"\"" docs/vault/.codegraph/vault-graph.json'
+# CodeGraph's MCP connect-time catch-up deletes rows of unparsed files: the loader must not write `files`
+t "vault loader writes no files rows" '! grep -q "INSERT INTO files" "$FEFO_ROOT/lib/vault-graph.mjs"'
 
 # agents --default copies agents
 ws=$tmp/ws_agents2; newws "$ws"

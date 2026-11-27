@@ -70,6 +70,11 @@ CodeGraph's SQLite schema (kinds mapped to module/function/variable/class), and
 serves it via `codegraph serve --mcp --no-watch --path docs/vault`. Query it
 with `codegraph_context`/`codegraph_search` on the `vault` server.
 
+The loader writes nodes and edges but no `files` rows: when an MCP client
+connects, CodeGraph catches up by walking `files` and deleting rows for files it
+cannot parse, which would wipe every note. So `codegraph status docs/vault`
+reports `Files: 0` with real node and edge counts — that is expected.
+
 ## know-graph viewer
 
 `fefo graph` renders the same vault graph in a self-contained HTML page (canvas

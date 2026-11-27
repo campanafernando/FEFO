@@ -142,7 +142,7 @@ _fefo_graph_build() {
       (( in_fence )) && continue
 
       if [[ "$line" =~ '^(#{1,3})[[:space:]]+(.+)$' ]]; then
-        local hashes=${MATCH[1]} text=$(_fefo__trim "${MATCH[2]}")
+        local hashes=${match[1]} text=$(_fefo__trim "${match[2]}")
         text=${text%%[[:space:]]\#*}
         local slug=$(_fefo_slug "$text")
         _fefo__graph_add_node "heading:$rel#$slug" "heading" "$text" "$rel" "$i"

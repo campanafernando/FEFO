@@ -610,8 +610,10 @@ _fefo_gen_all() {
     _fefo_emit ".opencode/bin/browse-mcp" _fefo_gen_browse_mcp
   fi
   chmod +x "$ws/.opencode/bin/mcp" "$ws/.opencode/bin/browse-mcp" 2>/dev/null
-  _fefo_emit_once ".env.example" _fefo_gen_env_example
-  _fefo_emit_once ".env.mcp.example" _fefo_gen_env_mcp_example
+  if [[ ! -f "$ws/.fefo/template" ]]; then
+    _fefo_emit_once ".env.example" _fefo_gen_env_example
+    _fefo_emit_once ".env.mcp.example" _fefo_gen_env_mcp_example
+  fi
   _fefo_ensure_gitignore
   _fefo_copy_skills
   if (( ${FEFO_CLAUDE:-1} )); then
